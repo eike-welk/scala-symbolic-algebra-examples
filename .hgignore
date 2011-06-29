@@ -1,0 +1,5 @@
+#Switch to shell glob expressions
+syntax: glob
+
+bin/*
+
