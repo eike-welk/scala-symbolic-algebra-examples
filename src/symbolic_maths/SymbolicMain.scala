@@ -1,14 +1,50 @@
+/***************************************************************************
+*    Copyright (C) 2011 by Eike Welk                                       *
+*    eike.welk@gmx.net                                                     *
+*                                                                          *
+*    License: GPL                                                          *
+*                                                                          *
+*    This program is free software; you can redistribute it and#or modify  *
+*    it under the terms of the GNU General Public License as published by  *
+*    the Free Software Foundation; either version 2 of the License, or     *
+*    (at your option) any later version.                                   *
+*                                                                          *
+*    This program is distributed in the hope that it will be useful,       *
+*    but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+*    GNU General Public License for more details.                          *
+*                                                                          *
+*    You should have received a copy of the GNU General Public License     *
+*    along with this program; if not, write to the                         *
+*    Free Software Foundation, Inc.,                                       *
+*    59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
+****************************************************************************/
+
+/***************************************************************************
+ *                     Simple Symbolic Algebra in Scala                    *
+ ***************************************************************************
+ *       Uses **pattern matching**,  classes are **pure data**.
+ *
+ * A much more involved project for a miniature programming language in 
+ * Scala is Kiama:
+ * http://code.google.com/p/kiama/wiki/Lambda2
+ *
+ * See also this discussion:
+ * http://www.scala-lang.org/node/6860
+ *
+ ***************************************************************************/
+
 package symbolic_maths
 
 import scala.math.{pow, log, E}
 import scala.collection.mutable.ListBuffer
 
   //The elements of the AST ----------------------------------------------
-  //Expressions also evaluate to nodes of the AST 
+  //Expressions also evaluate to nodes of the AST
 
   //Common base class
   //Implement binary operations for the elements of the AST.
-  //Additionally Int and Double can be used 
+  //Additionally Int and Double can be used
   class Expr {
     import Expr.{ flatten_add, flatten_mul }
 
@@ -17,14 +53,14 @@ import scala.collection.mutable.ListBuffer
     def *(other: Expr) = flatten_mul(Mul(this :: other :: Nil))
     def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
     //Warning wrong precedence! Precedence of ``**`` and ``*`` is equal.
-    def **(other: Expr) = Pow(this, other) 
+    def **(other: Expr) = Pow(this, other)
   }
   object Expr {
     //implicit conversions so that numbers can be used with the binary operators
     implicit def toNum(inum: Int) = Num(inum)
     implicit def toNum(dnum: Double) = Num(dnum)
 
-    //Convert nested additions to flat n-ary additions: 
+    //Convert nested additions to flat n-ary additions:
     //  (+ a (+ b c)) => (+ a b c)
     def flatten_add(expr: Add): Add = {
       val summands_new = new ListBuffer[Expr]
@@ -37,7 +73,7 @@ import scala.collection.mutable.ListBuffer
       Add(summands_new.toList)
     }
 
-    //Convert nested multiplications to flat n-ary multiplications: 
+    //Convert nested multiplications to flat n-ary multiplications:
     //  (* a (* b c)) => (* a b c)
     def flatten_mul(expr: Mul): Mul = {
       val factors_new = new ListBuffer[Expr]
@@ -71,21 +107,21 @@ import scala.collection.mutable.ListBuffer
   //``expr_next`` in the new environment.
   case class Let(name: String, value: Expr, expr_next: Expr) extends Expr
 
-  
+
 //--- Operations on the AST -------------------------------------------------
-object AstOps {    
+object AstOps {
   //Convert the AST to a traditional infix notation for math (String)
-  //TODO: insert braces in the right places
-  //TODO: convert a * b**-1 to a / b
   def pretty_str(term: Expr): String = {
+    //TODO: insert braces in the right places
+    //TODO: convert a * b**-1 to a / b
     
-    //Convert elements of ``terms`` to strings, 
+    //Convert elements of ``terms`` to strings,
     //and place string ``sep`` between them
     def convert_join(sep: String, terms: List[Expr]) = {
       val str_lst = terms.map(pretty_str)
       str_lst.reduce((s1, s2) => s1 + sep + s2)
     }
-    
+
     term match {
       case Num(num)       => num match {
         case E => "E"
@@ -97,8 +133,8 @@ object AstOps {
       case Mul(term_lst)  => convert_join(" * ", term_lst)
       case Pow(base, exp) => pretty_str(base) + " ** " + pretty_str(exp)
       case Log(base, pow) => "Log(" + pretty_str(base) + ", " + pretty_str(pow) + ")"
-      case Let(name, value, in) 
-                          => name + " = " + pretty_str(value) + " in \n" + 
+      case Let(name, value, in)
+                          => name + " = " + pretty_str(value) + " in \n" +
                              pretty_str(in)
       case _ => throw new IllegalArgumentException(
                   "Unknown expression: '%s'.".format(term))
@@ -117,22 +153,22 @@ object AstOps {
       println(pretty_str(term) + ";;")
     }
   }
-  
-  
+
+
   //Evaluate an expression in an environment where some symbols are known
   //Looks up known symbols, performs the usual arithmetic operations.
   //Terms with unknown symbols are returned un-evaluated.
-  def eval(term: Expr, env: Map[String, Expr]): Expr = {
+  def eval(term: Expr, env: Map[String, Expr] = Map[String, Expr]()): Expr = {
     term match {
       case Sym(name)       => env.getOrElse(name, term)
       case Neg(term)       => simplify_neg(Neg(eval(term, env)))
       case Add(terms)      => simplify_add(Add(terms.map(t => eval(t, env))))
       case Mul(terms)      => simplify_mul(Mul(terms.map(t => eval(t, env))))
-      case Pow(base, expo) => 
-        simplify_pow(Pow(eval(base, env), eval(expo, env))) 
-      case Log(base, power) => 
-        simplify_log(Log(eval(base, env), eval(power, env))) 
-      //Add one binding to the environment, 
+      case Pow(base, expo) =>
+        simplify_pow(Pow(eval(base, env), eval(expo, env)))
+      case Log(base, power) =>
+        simplify_log(Log(eval(base, env), eval(power, env)))
+      //Add one binding to the environment,
       //and evaluate the next expression in the new environment
       case Let(name, value, expr_next) => {
         val env_new = env.updated(name, eval(value, env))
@@ -141,13 +177,13 @@ object AstOps {
       case _ => term
     }
   }
-	
-  
+
+
   //Convert a Num to a Double
   def num2double(num: Expr) = num match {
     case Num(dbl) => dbl
   }
-    
+
   //Simplify minus sign (Neg)
   def simplify_neg(expr: Neg): Expr = {
     expr match {
@@ -163,47 +199,47 @@ object AstOps {
   def simplify_add(expr: Add): Expr = {
     //flatten nested Add
     val add_f = Expr.flatten_add(expr)
-    
-    // 0 + a = a - remove all "0" elements 
+
+    // 0 + a = a - remove all "0" elements
     val summands0 = add_f.summands.filterNot(t => t == Num(0))
     if (summands0 == Nil) return Num(0)
     //TODO: Distribute negative sign: -(a+b+c) -> -a + -b + -c
-    
+
     //sum the numbers up, keep all other elements unchanged
     val (nums, others) = summands0.partition(t => t.isInstanceOf[Num])
     val sum = nums.map(num2double).reduceOption((x, y) => x + y)
                   .map(Num).toList
     val summands_s = sum ::: others
-    
+
     //Remove Muls with only one argument:  (* 23) -> 23
-    if (summands_s.length == 1) summands_s(0) 
+    if (summands_s.length == 1) summands_s(0)
     else Add(summands_s)
   }
-  
+
   //Simplify a n-ary multiplication
   def simplify_mul(expr: Mul): Expr = {
     //flatten nested Mul
     val mul_f = Expr.flatten_mul(expr)
-    
+
     // 0 * a = 0
     if (mul_f.factors.contains(Num(0))) return Num(0)
-    // 1 * a = a - remove all "1" elements 
+    // 1 * a = a - remove all "1" elements
     val factors1 = mul_f.factors.filterNot(t => t == Num(1))
     if (factors1 == Nil) return Num(1)
     //TODO: Distribute powers: (a*b*c)**d -> a**d * b**d * c**d
-    
+
     //multiply the numbers with each other, keep all other elements unchanged
     val (nums, others) = factors1.partition(t => t.isInstanceOf[Num])
     val prod = nums.map(num2double).reduceOption((x, y) => x * y)
                    .map(Num).toList
     val factors_p = prod ::: others
-    
+
     //Remove Muls with only one argument:  (* 23) -> 23
-    if (factors_p.length == 1) factors_p(0) 
+    if (factors_p.length == 1) factors_p(0)
     else Mul(factors_p)
   }
-  
-  //Simplify Powers 
+
+  //Simplify Powers
   def simplify_pow(expr: Pow): Expr = {
     expr match {
       // a**0 = 1
@@ -234,7 +270,7 @@ object AstOps {
       case _ => expr
     }
   }
-  
+
   //Compute the derivative symbolically
   def diff(term: Expr, x: Sym): Expr = {
     import Expr.toNum
@@ -244,8 +280,8 @@ object AstOps {
       case Sym(_)     => if (term == x) Num(1) else Num(0)
       case Neg(term)  => simplify_neg(Neg(diff(term, x)))
       case Add(summands) => simplify_add(Add(summands.map(t => diff(t, x))))
-      //D(u*v*w) = Du*v*w + u*Dv*w + u*v*Dw 
-      case Mul(factors) => 
+      //D(u*v*w) = Du*v*w + u*Dv*w + u*v*Dw
+      case Mul(factors) =>
         val summands = new ListBuffer[Expr]
         for (i <- 0 until factors.length) {
           val facts_new = ListBuffer.concat(factors)
@@ -254,15 +290,14 @@ object AstOps {
         }
         simplify_add(Add(summands.toList))
       // diff(x**n, x) = n * x**(n-1) - The simple middle school case
-      case Pow(base, Num(expo)) if base == x => 
+      case Pow(base, Num(expo)) if base == x =>
         expo * simplify_pow(base ** (expo-1))
       //General case (from Maple):
-      //      diff(u(x)**v(x), x) = 
+      //      diff(u(x)**v(x), x) =
       //        u(x)**v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
       case Pow(u, v) =>
-        val empty_env = Map[String, Expr]()
-        eval((u**v) * (diff(v, x)*Log(E, u) + v*diff(u, x)/u), empty_env)
-      //TODO: Differentiate Let.  
+        eval((u**v) * (diff(v, x)*Log(E, u) + v*diff(u, x)/u))
+      //TODO: Differentiate Let.
     }
   }
 }
@@ -272,10 +307,10 @@ object SymbolicMain {
   import AstOps._
   import Expr.toNum
 
-  //Create some symbols for the tests (unknown variables) 
-  val (a, b, x) = (Sym("a"), Sym("b"), Sym("x")) 
-  
-  
+  //Create some symbols for the tests (unknown variables)
+  val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
+
+
   def test_operators() = {
     //Test binary operators -----------------------------------------------
     //The basic operations are implemented
@@ -304,12 +339,12 @@ object SymbolicMain {
     //mixed * and / work propperly
     assert(a / b * x == Mul(a :: Pow(b, Num(-1)) :: x :: Nil))
   }
-  
-  
+
+
   //test simplification functions
   def test_simplify() = {
     //Test ``simplify_neg`` -----------------------------------------------
-    // -(2) = -2 
+    // -(2) = -2
     assert(simplify_neg(Neg(Num(2))) == Num(-2))
     // --a = a
     assert(simplify_neg(Neg(Neg(a))) == a)
@@ -320,7 +355,7 @@ object SymbolicMain {
     assert(simplify_neg(Neg(Neg(Neg(a)))) == Neg(a))
     // -a = -a
     assert(simplify_neg(Neg(a)) == Neg(a))
-    
+
     //Test ``simplify_mul`` -----------------------------------------------
     // 0*a = 0
     assert(simplify_mul(0 * a) == Num(0))
@@ -332,7 +367,7 @@ object SymbolicMain {
     assert(simplify_mul(Num(1) * 2 * 3) == Num(6))
     // a * b = a * b
     assert(simplify_mul(a * b) == a * b)
-    
+
     //Test ``simplify_add`` -----------------------------------------------
     // 0+0+0 = 0
     assert(simplify_add(Num(0) + 0 + 0) == Num(0))
@@ -343,8 +378,8 @@ object SymbolicMain {
     assert(simplify_add(Num(0) + 1 + 2 + 3) == Num(6))
     // a * b = a * b
     assert(simplify_add(a + b) == a + b)
-    
-    //Test ``simplify_log`` -----------------------------------------------    
+
+    //Test ``simplify_log`` -----------------------------------------------
     //log(a, 1) = 0
     assert(simplify_log(Log(a, 1)) == Num(0))
     //log(a, a) = 1
@@ -354,8 +389,8 @@ object SymbolicMain {
     //log(2, 8) = 3 => 2**3 = 8
     assert(simplify_log(Log(2, 8)) == Num(3))
   }
-   
-  
+
+
   //Test differentiation -----------------------------------------------
   def test_diff() = {
     //diff(2, x) must be 0
@@ -387,7 +422,7 @@ object SymbolicMain {
     assert(diff(a**x, x) == a**x * Log(E, a))
   }
 
-  
+
   //--- Test evaluation of expressions ------------------------------------
   def test_eval() = {
     //Environment: x = 5
@@ -401,7 +436,7 @@ object SymbolicMain {
     // x**a must be 5**a
     //pprintln(eval(Pow(x, a), env), true)
     assert(eval(x**a, env) == 5**a)
-    //log(2, 8) must be 3 
+    //log(2, 8) must be 3
     assert(eval(Log(2, 8), env) == Num(3))
     // 2 + x + a + 3 must be 10 + a
     //pprintln(eval(Add(Num(2) :: x :: a :: Num(3) :: Nil), env), true)
@@ -412,14 +447,14 @@ object SymbolicMain {
     //pprintln(Let("a", DNum(2), Add(a :: x :: Nil)), true)
     assert(eval(Let("a", 2, a + x), env) == Num(7))
   }
-  
-  
-  def main(args : Array[String]) : Unit = { 
+
+
+  def main(args : Array[String]) : Unit = {
     test_operators()
     test_simplify()
     test_diff()
     test_eval()
-    
+
     println("Tests finished successfully.")
   }
 }
