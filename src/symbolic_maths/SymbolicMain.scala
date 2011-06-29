@@ -71,8 +71,9 @@ import scala.collection.mutable.ListBuffer
   //``expr_next`` in the new environment.
   case class Let(name: String, value: Expr, expr_next: Expr) extends Expr
 
-object SymbolicMain {
-  //--- Operations on the AST -------------------------------------------------
+  
+//--- Operations on the AST -------------------------------------------------
+object AstOps {    
   //Convert the AST to a traditional infix notation for math (String)
   //TODO: insert braces in the right places
   //TODO: convert a * b**-1 to a / b
@@ -264,15 +265,19 @@ object SymbolicMain {
       //TODO: Differentiate Let.  
     }
   }
+}
+
+//--- Test the symbolic maths library --------------------------------------
+object SymbolicMain {
+  import AstOps._
+  import Expr.toNum
+
+  //Create some symbols for the tests (unknown variables) 
+  val (a, b, x) = (Sym("a"), Sym("b"), Sym("x")) 
   
-  //--- Test the symbolic maths library --------------------------------------
-  def main(args : Array[String]) : Unit = { 
-    //Create two symbols (unknown variables) 
-    val (a, b, x) = (Sym("a"), Sym("b"), Sym("x")) 
-    
+  
+  def test_operators() = {
     //Test binary operators -----------------------------------------------
-    import Expr.toNum
-//    
     //The basic operations are implemented
     assert(a + b == Add(a :: b :: Nil))
     assert(a - b == Add(a :: Neg(b) :: Nil))
@@ -298,7 +303,11 @@ object SymbolicMain {
     assert(a - b + x == Add(a :: Neg(b) :: x :: Nil))
     //mixed * and / work propperly
     assert(a / b * x == Mul(a :: Pow(b, Num(-1)) :: x :: Nil))
-
+  }
+  
+  
+  //test simplification functions
+  def test_simplify() = {
     //Test ``simplify_neg`` -----------------------------------------------
     // -(2) = -2 
     assert(simplify_neg(Neg(Num(2))) == Num(-2))
@@ -344,8 +353,11 @@ object SymbolicMain {
     assert(simplify_log(Log(a, x**b)) == b * Log(a, x))
     //log(2, 8) = 3 => 2**3 = 8
     assert(simplify_log(Log(2, 8)) == Num(3))
-    
-    //Test differentiation -----------------------------------------------
+  }
+   
+  
+  //Test differentiation -----------------------------------------------
+  def test_diff() = {
     //diff(2, x) must be 0
     assert(diff(Num(2), x) == Num(0))
     //diff(a, x)  must be 0
@@ -373,8 +385,11 @@ object SymbolicMain {
     assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
     //diff(a**x, x) = a**x * ln(a)
     assert(diff(a**x, x) == a**x * Log(E, a))
-    
-    //--- Test evaluation of expressions ------------------------------------
+  }
+
+  
+  //--- Test evaluation of expressions ------------------------------------
+  def test_eval() = {
     //Environment: x = 5
     val env = Map("x" -> Num(5))
     // -x must be -5
@@ -396,6 +411,14 @@ object SymbolicMain {
     //let a = 2 in a + x; must be 7
     //pprintln(Let("a", DNum(2), Add(a :: x :: Nil)), true)
     assert(eval(Let("a", 2, a + x), env) == Num(7))
+  }
+  
+  
+  def main(args : Array[String]) : Unit = { 
+    test_operators()
+    test_simplify()
+    test_diff()
+    test_eval()
     
     println("Tests finished successfully.")
   }
