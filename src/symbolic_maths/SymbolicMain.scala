@@ -1,111 +1,127 @@
-/***************************************************************************
-*    Copyright (C) 2011 by Eike Welk                                       *
-*    eike.welk@gmx.net                                                     *
-*                                                                          *
-*    License: GPL                                                          *
-*                                                                          *
-*    This program is free software; you can redistribute it and#or modify  *
-*    it under the terms of the GNU General Public License as published by  *
-*    the Free Software Foundation; either version 2 of the License, or     *
-*    (at your option) any later version.                                   *
-*                                                                          *
-*    This program is distributed in the hope that it will be useful,       *
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*    GNU General Public License for more details.                          *
-*                                                                          *
-*    You should have received a copy of the GNU General Public License     *
-*    along with this program; if not, write to the                         *
-*    Free Software Foundation, Inc.,                                       *
-*    59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-****************************************************************************/
+/*-------------------------------------------------------------------------+
+ |   Copyright (C) 2011 by Eike Welk                                       |
+ |   eike.welk@gmx.net                                                     |
+ |                                                                         |
+ |   License: GPL                                                          |
+ |                                                                         |
+ |   This program is free software; you can redistribute it and#or modify  |
+ |   it under the terms of the GNU General Public License as published by  |
+ |   the Free Software Foundation; either version 2 of the License, or     |
+ |   (at your option) any later version.                                   |
+ |                                                                         |
+ |   This program is distributed in the hope that it will be useful,       |
+ |   but WITHOUT ANY WARRANTY; without even the implied warranty of        |
+ |   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         |
+ |   GNU General Public License for more details.                          |
+ |                                                                         |
+ |   You should have received a copy of the GNU General Public License     |
+ |   along with this program; if not, write to the                         |
+ |   Free Software Foundation, Inc.,                                       |
+ |   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             |
+ +-------------------------------------------------------------------------+*/
 
-/***************************************************************************
- *                     Simple Symbolic Algebra in Scala                    *
- ***************************************************************************
- *       Uses **pattern matching**,  classes are **pure data**.
+/**
+ * Simple Symbolic Algebra in Scala
+ * This implementation uses **pattern matching**,  classes are **pure data**.
  *
- * A much more involved project for a miniature programming language in 
+ * A much more involved project for a miniature programming language in
  * Scala is Kiama:
  * http://code.google.com/p/kiama/wiki/Lambda2
  *
  * See also this discussion:
  * http://www.scala-lang.org/node/6860
- *
- ***************************************************************************/
-
+ */
 package symbolic_maths
 
-import scala.math.{pow, log, E}
+import scala.math.{ pow, log, E }
 import scala.collection.mutable.ListBuffer
 
-  //The elements of the AST ----------------------------------------------
-  //Expressions also evaluate to nodes of the AST
+//The elements of the AST ----------------------------------------------
+//Expressions also evaluate to nodes of the AST
 
-  //Common base class
-  //Implement binary operations for the elements of the AST.
-  //Additionally Int and Double can be used
-  class Expr {
-    import Expr.{ flatten_add, flatten_mul }
+/**
+ * Common base class of all AST nodes.
+ *
+ * Implement binary operations for the elements of the AST.
+ * Int and Double can be mixed with Expr (AST) nodes, when using binary 
+ * operators, because the companion object defines implicit conversions to 
+ * [[symbolic_maths.Num]].
+ */
+class Expr {
+  import Expr.{ flatten_add, flatten_mul }
 
-    def +(other: Expr) = flatten_add(Add(this :: other :: Nil))
-    def -(other: Expr) = Add(this :: Neg(other) :: Nil)
-    def *(other: Expr) = flatten_mul(Mul(this :: other :: Nil))
-    def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
-    //Warning wrong precedence! Precedence of ``**`` and ``*`` is equal.
-    def **(other: Expr) = Pow(this, other)
-  }
-  object Expr {
-    //implicit conversions so that numbers can be used with the binary operators
-    implicit def toNum(inum: Int) = Num(inum)
-    implicit def toNum(dnum: Double) = Num(dnum)
+  def +(other: Expr) = flatten_add(Add(this :: other :: Nil))
+  def -(other: Expr) = Add(this :: Neg(other) :: Nil)
+  def *(other: Expr) = flatten_mul(Mul(this :: other :: Nil))
+  def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
+  /** Warning wrong precedence! Precedence of ``**`` and ``*`` is equal. */
+  def **(other: Expr) = Pow(this, other)
+}
 
-    //Convert nested additions to flat n-ary additions:
-    //  (+ a (+ b c)) => (+ a b c)
-    def flatten_add(expr: Add): Add = {
-      val summands_new = new ListBuffer[Expr]
-      for (s <- expr.summands) {
-        s match {
-          case a: Add => summands_new ++= flatten_add(a).summands
-          case x      => summands_new ++= List(x)
-        }
+/**
+ * Contains some helper methods for Expr (AST) nodes:
+ *
+ * * Implicit conversions from Int and Double to [[symbolic_maths.Num]].
+ * * Some tree beautification methods.
+ */
+object Expr {
+  //implicit conversions so that numbers can be used with the binary operators
+  implicit def toNum(inum: Int) = Num(inum)
+  implicit def toNum(dnum: Double) = Num(dnum)
+
+  /**
+   * Convert nested additions to flat n-ary additions:
+   *  (+ a (+ b c)) => (+ a b c)
+   */
+  def flatten_add(expr: Add): Add = {
+    val summands_new = new ListBuffer[Expr]
+    for (s <- expr.summands) {
+      s match {
+        case a: Add => summands_new ++= flatten_add(a).summands
+        case x      => summands_new ++= List(x)
       }
-      Add(summands_new.toList)
     }
-
-    //Convert nested multiplications to flat n-ary multiplications:
-    //  (* a (* b c)) => (* a b c)
-    def flatten_mul(expr: Mul): Mul = {
-      val factors_new = new ListBuffer[Expr]
-      for (s <- expr.factors) {
-        s match {
-          case m: Mul => factors_new ++= flatten_mul(m).factors
-          case x      => factors_new ++= List(x)
-        }
-      }
-      Mul(factors_new.toList)
-    }
+    Add(summands_new.toList)
   }
 
-  //The concrete node types
-  //Numbers
-  case class Num(num: Double) extends Expr
-  //Symbols (references to variables)
-  case class Sym(name: String) extends Expr
-  //Unary minus (-x)
-  case class Neg(term: Expr) extends Expr
-  //N-ary addition (+ a b c d); subtraction is emulated with the unary minus operator
-  case class Add(summands: List[Expr]) extends Expr
-  //N-ary multiplication (* a b c d); division is emulated with power
-  case class Mul(factors: List[Expr]) extends Expr
-  //Power (exponentiation) operator
-  case class Pow(base: Expr, exponent: Expr) extends Expr
-  //Logarithm to arbitrary base
-  case class Log(base: Expr, power: Expr) extends Expr
-  //ML style binding operator
-  //Add one binding (name = value) to the environment and evaluate expression
-  //``expr_next`` in the new environment.
-  case class Let(name: String, value: Expr, expr_next: Expr) extends Expr
+  /**
+   * Convert nested multiplications to flat n-ary multiplications:
+   *  (* a (* b c)) => (* a b c)
+   */
+  def flatten_mul(expr: Mul): Mul = {
+    val factors_new = new ListBuffer[Expr]
+    for (s <- expr.factors) {
+      s match {
+        case m: Mul => factors_new ++= flatten_mul(m).factors
+        case x      => factors_new ++= List(x)
+      }
+    }
+    Mul(factors_new.toList)
+  }
+}
+
+//The concrete node types
+/** Numbers */
+case class Num(num: Double) extends Expr
+/** Symbols (references to variables) */
+case class Sym(name: String) extends Expr
+/** Unary minus (-x) */
+case class Neg(term: Expr) extends Expr
+/** N-ary addition (+ a b c d). Subtraction is emulated with the unary minus operator */
+case class Add(summands: List[Expr]) extends Expr
+/** N-ary multiplication (* a b c d); division is emulated with power */
+case class Mul(factors: List[Expr]) extends Expr
+/** Power (exponentiation) operator */
+case class Pow(base: Expr, exponent: Expr) extends Expr
+/** Logarithm to arbitrary base */
+case class Log(base: Expr, power: Expr) extends Expr
+/**
+ * ML style binding operator
+ * 
+ * Add one binding (name = value) to the environment and evaluate expression
+ * ``expr_next`` in the new environment.
+ */
+case class Let(name: String, value: Expr, expr_next: Expr) extends Expr
 
 
 //--- Operations on the AST -------------------------------------------------
