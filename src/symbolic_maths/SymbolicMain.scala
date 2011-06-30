@@ -101,9 +101,16 @@ object Expr {
 }
 
 
-//--- Operations on the AST -------------------------------------------------
+/** Operations on the AST */
 object AstOps {
-  //Convert the AST to a traditional infix notation for math (String)
+  /** Type of the environment, for the variables that are assigned by let. */
+  type Environ = Map[String, Expr]
+  val Environ = Map[String, Expr] _
+  
+  /** 
+   * Convert the AST to a traditional infix notation for math (String) 
+   * 
+   * For printing see: [[pprintln]] */
   def prettyStr(term: Expr): String = {
     //TODO: insert braces in the right places
     //TODO: convert a * b**-1 to a / b
@@ -127,16 +134,15 @@ object AstOps {
       case Pow(base, exp) => prettyStr(base) + " ** " + prettyStr(exp)
       case Log(base, pow) => "Log(" + prettyStr(base) + ", " + prettyStr(pow) + ")"
       case Let(name, value, in) => 
-        "let " + name + " = " + prettyStr(value) + " in \n" + prettyStr(in)
+        "let " + name + " := " + prettyStr(value) + " in \n" + prettyStr(in)
       case _ => throw new IllegalArgumentException(
                   "Unknown expression: '%s'.".format(term))
     }
   }
   
-  //print AST in human readable form.
+  /** Print AST in human readable form. */
   def pprintln(term: Expr, debug: Boolean = false) = {
     if (debug) {
-      println()
       println("--- AST ------------------------------------")
       println(term)
       println("--- Human Readable -------------------------")
@@ -150,7 +156,7 @@ object AstOps {
   //Evaluate an expression in an environment where some symbols are known
   //Looks up known symbols, performs the usual arithmetic operations.
   //Terms with unknown symbols are returned un-evaluated.
-  def eval(term: Expr, env: Map[String, Expr] = Map[String, Expr]()): Expr = {
+  def eval(term: Expr, env: Environ = Environ()): Expr = {
     term match {
       case Sym(name)       => env.getOrElse(name, term)
       case Neg(term)       => simplify_neg(Neg(eval(term, env)))
@@ -295,44 +301,55 @@ object AstOps {
 
   /** Compute the derivative symbolically */
   def diff(term: Expr, x: Sym,
-           env: Map[String, Expr] = Map[String, Expr]()): Expr = {
+           env: Environ = Environ()): Expr = {
     import Expr.toNum
 
     term match {
-      case Num(_)     => Num(0)
-      case Sym(_)     => if (term == x) Num(1) else Num(0)
-      case Neg(term)  => simplify_neg(Neg(diff(term, x)))
-      case Add(summands) => simplify_add(Add(summands.map(t => diff(t, x))))
+      case Num(_) => Num(0)
+      case Sym(name) => {
+        val dName = name + "$" + x.name
+        if      (name == x.name)      Num(1)
+        else if (env.contains(dName)) Sym(dName)
+        else                          Num(0)
+      }
+      case Neg(term)     => simplify_neg(Neg(diff(term, x, env)))
+      case Add(summands) => simplify_add(Add(summands.map(t => diff(t, x, env))))
       //D(u*v*w) = Du*v*w + u*Dv*w + u*v*Dw
       case Mul(factors) =>
         val summands = new ListBuffer[Expr]
         for (i <- 0 until factors.length) {
           val facts_new = ListBuffer.concat(factors)
-          facts_new(i) = diff(facts_new(i), x)
+          facts_new(i) = diff(facts_new(i), x, env)
           summands += simplify_mul(Mul(facts_new.toList))
         }
         simplify_add(Add(summands.toList))
-      // diff(x**n, x) = n * x**(n-1) - The simple middle school case
+      // Simple case: diff(x**n, x) = n * x**(n-1) - 
       case Pow(base, Num(expo)) if base == x =>
         expo * simplify_pow(base ** (expo-1))
       //General case (from Maple):
       //      diff(u(x)**v(x), x) =
       //        u(x)**v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
       case Pow(u, v) =>
-        eval((u**v) * (diff(v, x)*Log(E, u) + v*diff(u, x)/u))
-      //TODO: Differentiate `Let`. 
-      //      Let needs environment like `eval`.
+        eval((u**v) * (diff(v, x, env)*Log(E, u) + v*diff(u, x)/u), Environ()) //eval to simplify
+      //Differentiate `let name = value in nextExpr`. 
       case Let(name, value, nextExpr) => {
-        val inExprDiff = Num(-0)
-        val valueDiff = Num(-0)
-        val innerLet = Let(name + "$" + x.name, valueDiff, inExprDiff)
+        //Differentiate the value in the original environment.
+        val valueD = diff(value, x, env) 
+        //Create new environment where derived value has standardized name.
+        val valueDName = name + "$" + x.name
+        val newEnv =  env.updated(valueDName, valueD)
+        //Derive the next expression in the new environment.
+        val nextExprD = diff(nextExpr, x, newEnv)
+        //create the two intertwined let expressions
+        val innerLet = Let(valueDName, valueD, nextExprD)
         Let(name, value, innerLet)
+        //TODO: simplify_let: remove unused variables.
       }
     }
   }
 }
 
-//--- Test the symbolic maths library --------------------------------------
+/** Test the symbolic maths library */
 object SymbolicMain {
   import AstOps._
   import Expr.toNum
@@ -449,11 +466,19 @@ object SymbolicMain {
     assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
     //diff(a**x, x) = a**x * ln(a)
     assert(diff(a**x, x) == a**x * Log(E, a))
-    
+    //Test environment for let: diff(a, x, Environ("a$x", 23)) == a$x
+    val (a$x, b$x) = (Sym("a$x"), Sym("b$x"))
+    assert(diff(a, x, Environ("a$x" -> 23)) == a$x)
     //diff(let a = x**2 in 
     //     a + x + 2, x)   =   2*x + 1
-    pprintln(Let("a", x**2, a + x + 2), true)
-    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
+//    pprintln(Let("a", x**2, a + x + 2), true)
+//    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
+    assert(diff(Let("a", x**2, a + x + 2), x) == 
+                Let("a", x**2,
+                Let("a$x", 2 * x, 1 + a$x)))
+    //Environment: a$x, b$x; diff(a * b, x) == a$x * b + a * b$x
+    val env1 = Environ("a$x"->0, "b$x"->0)
+    assert(diff(a * b, x, env1) == a$x * b + a * b$x)
   }
 
 
