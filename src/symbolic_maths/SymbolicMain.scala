@@ -43,61 +43,27 @@ import scala.collection.mutable.ListBuffer
  * Common base class of all AST nodes.
  *
  * Implement binary operations for the elements of the AST.
- * Int and Double can be mixed with Expr (AST) nodes, when using binary 
+ * `Int` and `Double` can be mixed with `Expr` (AST) nodes when using binary 
  * operators, because the companion object defines implicit conversions to 
  * [[symbolic_maths.Num]].
+ * 
+ * In the following code snippet `myExpr` is an [[symbolic_maths.Add]]. Note
+ * the parenthesis around `x**2`; the power operators precedence is too low. 
+ * It is equal to the precedence of `*`.
+ * {{{
+ * val x = Sym("x")
+ * val myExpr = 2 * (x**2) + 2 * x + 3
+ * }}}
  */
-class Expr {
-  import Expr.{ flatten_add, flatten_mul }
+abstract class Expr {
+  import AstOps.{ flatten_add, flatten_mul }
 
   def +(other: Expr) = flatten_add(Add(this :: other :: Nil))
   def -(other: Expr) = Add(this :: Neg(other) :: Nil)
   def *(other: Expr) = flatten_mul(Mul(this :: other :: Nil))
   def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
-  /** Warning wrong precedence! Precedence of ``**`` and ``*`` is equal. */
+  /** Warning precedence is too low! Precedences of `**` and `*` are equal. */
   def **(other: Expr) = Pow(this, other)
-}
-
-/**
- * Contains some helper methods for Expr (AST) nodes:
- *
- * * Implicit conversions from Int and Double to [[symbolic_maths.Num]].
- * * Some tree beautification methods.
- */
-object Expr {
-  //implicit conversions so that numbers can be used with the binary operators
-  implicit def toNum(inum: Int) = Num(inum)
-  implicit def toNum(dnum: Double) = Num(dnum)
-
-  /**
-   * Convert nested additions to flat n-ary additions:
-   *  (+ a (+ b c)) => (+ a b c)
-   */
-  def flatten_add(expr: Add): Add = {
-    val summands_new = new ListBuffer[Expr]
-    for (s <- expr.summands) {
-      s match {
-        case a: Add => summands_new ++= flatten_add(a).summands
-        case x      => summands_new ++= List(x)
-      }
-    }
-    Add(summands_new.toList)
-  }
-
-  /**
-   * Convert nested multiplications to flat n-ary multiplications:
-   *  (* a (* b c)) => (* a b c)
-   */
-  def flatten_mul(expr: Mul): Mul = {
-    val factors_new = new ListBuffer[Expr]
-    for (s <- expr.factors) {
-      s match {
-        case m: Mul => factors_new ++= flatten_mul(m).factors
-        case x      => factors_new ++= List(x)
-      }
-    }
-    Mul(factors_new.toList)
-  }
 }
 
 //The concrete node types
@@ -119,22 +85,33 @@ case class Log(base: Expr, power: Expr) extends Expr
  * ML style binding operator
  * 
  * Add one binding (name = value) to the environment and evaluate expression
- * ``expr_next`` in the new environment.
+ * `expr_next` in the new environment.
  */
 case class Let(name: String, value: Expr, expr_next: Expr) extends Expr
+
+
+/**
+ * Implicit conversions from [[scala.Int]] and [[scala.Double]] to 
+ * [[symbolic_maths.Num]].
+ */
+object Expr {
+  //implicit conversions so that numbers can be used with the binary operators
+  implicit def toNum(inum: Int) = Num(inum)
+  implicit def toNum(dnum: Double) = Num(dnum)
+}
 
 
 //--- Operations on the AST -------------------------------------------------
 object AstOps {
   //Convert the AST to a traditional infix notation for math (String)
-  def pretty_str(term: Expr): String = {
+  def prettyStr(term: Expr): String = {
     //TODO: insert braces in the right places
     //TODO: convert a * b**-1 to a / b
     
-    //Convert elements of ``terms`` to strings,
-    //and place string ``sep`` between them
+    //Convert elements of `terms` to strings,
+    //and place string `sep` between them
     def convert_join(sep: String, terms: List[Expr]) = {
-      val str_lst = terms.map(pretty_str)
+      val str_lst = terms.map(prettyStr)
       str_lst.reduce((s1, s2) => s1 + sep + s2)
     }
 
@@ -144,18 +121,18 @@ object AstOps {
         case _ => num.toString()
       }
       case Sym(name)      => name
-      case Neg(term)      => "-" + pretty_str(term)
+      case Neg(term)      => "-" + prettyStr(term)
       case Add(term_lst)  => convert_join(" + ", term_lst)
       case Mul(term_lst)  => convert_join(" * ", term_lst)
-      case Pow(base, exp) => pretty_str(base) + " ** " + pretty_str(exp)
-      case Log(base, pow) => "Log(" + pretty_str(base) + ", " + pretty_str(pow) + ")"
-      case Let(name, value, in)
-                          => name + " = " + pretty_str(value) + " in \n" +
-                             pretty_str(in)
+      case Pow(base, exp) => prettyStr(base) + " ** " + prettyStr(exp)
+      case Log(base, pow) => "Log(" + prettyStr(base) + ", " + prettyStr(pow) + ")"
+      case Let(name, value, in) => 
+        "let " + name + " = " + prettyStr(value) + " in \n" + prettyStr(in)
       case _ => throw new IllegalArgumentException(
                   "Unknown expression: '%s'.".format(term))
     }
   }
+  
   //print AST in human readable form.
   def pprintln(term: Expr, debug: Boolean = false) = {
     if (debug) {
@@ -163,13 +140,12 @@ object AstOps {
       println("--- AST ------------------------------------")
       println(term)
       println("--- Human Readable -------------------------")
-      println(pretty_str(term) + ";;")
+      println(prettyStr(term) + ";;")
       println()
     } else {
-      println(pretty_str(term) + ";;")
+      println(prettyStr(term) + ";;")
     }
   }
-
 
   //Evaluate an expression in an environment where some symbols are known
   //Looks up known symbols, performs the usual arithmetic operations.
@@ -194,13 +170,43 @@ object AstOps {
     }
   }
 
-
-  //Convert a Num to a Double
+  /** Converts a Num to a Double. (Throw exception for any other `Expr` in 
+   * `num`.) */
   def num2double(num: Expr) = num match {
     case Num(dbl) => dbl
   }
 
-  //Simplify minus sign (Neg)
+  /**
+   * Convert nested additions to flat n-ary additions:
+   * `(+ a (+ b c)) => (+ a b c)`
+   */
+  def flatten_add(expr: Add): Add = {
+    val summands_new = new ListBuffer[Expr]
+    for (s <- expr.summands) {
+      s match {
+        case a: Add => summands_new ++= flatten_add(a).summands
+        case x      => summands_new ++= List(x)
+      }
+    }
+    Add(summands_new.toList)
+  }
+
+  /**
+   * Convert nested multiplications to flat n-ary multiplications:
+   * `(* a (* b c)) => (* a b c)`
+   */
+  def flatten_mul(expr: Mul): Mul = {
+    val factors_new = new ListBuffer[Expr]
+    for (s <- expr.factors) {
+      s match {
+        case m: Mul => factors_new ++= flatten_mul(m).factors
+        case x      => factors_new ++= List(x)
+      }
+    }
+    Mul(factors_new.toList)
+  }
+
+  /** Simplify minus sign (Neg) */
   def simplify_neg(expr: Neg): Expr = {
     expr match {
       case Neg(Num(num))         => Num(-num)
@@ -211,10 +217,10 @@ object AstOps {
     }
   }
 
-  //Simplify a n-ary addition
+  /** Simplify a n-ary addition */
   def simplify_add(expr: Add): Expr = {
     //flatten nested Add
-    val add_f = Expr.flatten_add(expr)
+    val add_f = flatten_add(expr)
 
     // 0 + a = a - remove all "0" elements
     val summands0 = add_f.summands.filterNot(t => t == Num(0))
@@ -232,10 +238,10 @@ object AstOps {
     else Add(summands_s)
   }
 
-  //Simplify a n-ary multiplication
+  /** Simplify a n-ary multiplication */
   def simplify_mul(expr: Mul): Expr = {
     //flatten nested Mul
-    val mul_f = Expr.flatten_mul(expr)
+    val mul_f = flatten_mul(expr)
 
     // 0 * a = 0
     if (mul_f.factors.contains(Num(0))) return Num(0)
@@ -255,7 +261,7 @@ object AstOps {
     else Mul(factors_p)
   }
 
-  //Simplify Powers
+  /** Simplify Powers */
   def simplify_pow(expr: Pow): Expr = {
     expr match {
       // a**0 = 1
@@ -272,7 +278,7 @@ object AstOps {
     }
   }
 
-  //Simplify LOgarithms
+  /** Simplify LOgarithms */
   def simplify_log(expr: Log): Expr = {
     expr match {
       //log(a, 1) = 0
@@ -287,8 +293,9 @@ object AstOps {
     }
   }
 
-  //Compute the derivative symbolically
-  def diff(term: Expr, x: Sym): Expr = {
+  /** Compute the derivative symbolically */
+  def diff(term: Expr, x: Sym,
+           env: Map[String, Expr] = Map[String, Expr]()): Expr = {
     import Expr.toNum
 
     term match {
@@ -313,7 +320,14 @@ object AstOps {
       //        u(x)**v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
       case Pow(u, v) =>
         eval((u**v) * (diff(v, x)*Log(E, u) + v*diff(u, x)/u))
-      //TODO: Differentiate Let.
+      //TODO: Differentiate `Let`. 
+      //      Let needs environment like `eval`.
+      case Let(name, value, nextExpr) => {
+        val inExprDiff = Num(-0)
+        val valueDiff = Num(-0)
+        val innerLet = Let(name + "$" + x.name, valueDiff, inExprDiff)
+        Let(name, value, innerLet)
+      }
     }
   }
 }
@@ -325,10 +339,9 @@ object SymbolicMain {
 
   //Create some symbols for the tests (unknown variables)
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
-
-
+  
+  /** Test binary operators */
   def test_operators() = {
-    //Test binary operators -----------------------------------------------
     //The basic operations are implemented
     assert(a + b == Add(a :: b :: Nil))
     assert(a - b == Add(a :: Neg(b) :: Nil))
@@ -357,9 +370,9 @@ object SymbolicMain {
   }
 
 
-  //test simplification functions
+  /** test simplification functions */
   def test_simplify() = {
-    //Test ``simplify_neg`` -----------------------------------------------
+    //Test `simplify_neg` -----------------------------------------------
     // -(2) = -2
     assert(simplify_neg(Neg(Num(2))) == Num(-2))
     // --a = a
@@ -372,7 +385,7 @@ object SymbolicMain {
     // -a = -a
     assert(simplify_neg(Neg(a)) == Neg(a))
 
-    //Test ``simplify_mul`` -----------------------------------------------
+    //Test `simplify_mul` -----------------------------------------------
     // 0*a = 0
     assert(simplify_mul(0 * a) == Num(0))
     // 1*1*1 = 1
@@ -384,7 +397,7 @@ object SymbolicMain {
     // a * b = a * b
     assert(simplify_mul(a * b) == a * b)
 
-    //Test ``simplify_add`` -----------------------------------------------
+    //Test `simplify_add` -----------------------------------------------
     // 0+0+0 = 0
     assert(simplify_add(Num(0) + 0 + 0) == Num(0))
     // 0+a = 0
@@ -395,7 +408,7 @@ object SymbolicMain {
     // a * b = a * b
     assert(simplify_add(a + b) == a + b)
 
-    //Test ``simplify_log`` -----------------------------------------------
+    //Test `simplify_log` -----------------------------------------------
     //log(a, 1) = 0
     assert(simplify_log(Log(a, 1)) == Num(0))
     //log(a, a) = 1
@@ -407,7 +420,7 @@ object SymbolicMain {
   }
 
 
-  //Test differentiation -----------------------------------------------
+  /** Test differentiation */
   def test_diff() = {
     //diff(2, x) must be 0
     assert(diff(Num(2), x) == Num(0))
@@ -436,10 +449,15 @@ object SymbolicMain {
     assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
     //diff(a**x, x) = a**x * ln(a)
     assert(diff(a**x, x) == a**x * Log(E, a))
+    
+    //diff(let a = x**2 in 
+    //     a + x + 2, x)   =   2*x + 1
+    pprintln(Let("a", x**2, a + x + 2), true)
+    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
   }
 
 
-  //--- Test evaluation of expressions ------------------------------------
+  /** Test evaluation of expressions */
   def test_eval() = {
     //Environment: x = 5
     val env = Map("x" -> Num(5))
@@ -462,9 +480,21 @@ object SymbolicMain {
     //let a = 2 in a + x; must be 7
     //pprintln(Let("a", DNum(2), Add(a :: x :: Nil)), true)
     assert(eval(Let("a", 2, a + x), env) == Num(7))
+    //let a = 2 in
+    //let b = a * x in
+    //let a = 5 in //a is rebound
+    //a + b
+    // must be 5 + 2 * x
+//    pprintln(Let("a", 2, 
+//             Let("b", a * x,
+//             Let("a", 5, a +b))), true)
+    val emptyEnv = Map[String, Expr]()
+    assert(eval(Let("a", 2, 
+                Let("b", a * x,
+                Let("a", 5, a +b))), emptyEnv) == 5 + 2 * x)
   }
 
-
+  /** Run the test application. */
   def main(args : Array[String]) : Unit = {
     test_operators()
     test_simplify()
