@@ -31,7 +31,7 @@
  * See also this discussion:
  * http://www.scala-lang.org/node/6860
  */
-package symbolic_maths
+package symath1
 
 import scala.math.{ pow, log, E }
 import scala.collection.mutable.ListBuffer
@@ -87,7 +87,7 @@ case class Log(base: Expr, power: Expr) extends Expr
  * Add one binding (name = value) to the environment and evaluate expression
  * `expr_next` in the new environment.
  */
-case class Let(name: String, value: Expr, expr_next: Expr) extends Expr
+case class Let(name: String, value: Expr, exprNext: Expr) extends Expr
 
 
 /**
@@ -101,9 +101,36 @@ object Expr {
 }
 
 
-/** Operations on the AST */
+/** 
+ * Operations on the expression (AST) 
+ * 
+ * == Pretty Printing ==
+ * 
+ * `prettyStr`: convert each instance to a pretty printed string.
+ * 
+ * `pprintln`: print the instance in pretty printed form, append ";;".
+ * 
+ * == Simplification ==
+ * 
+ * There are numerous simplification routines in this object, but there is
+ * no specialized high level interface for simplification. Use `eval`
+ * instead.
+ * 
+ * == Differentiation == 
+ * 
+ * `diff`: Differentiate this object symbolically. 
+ *  
+ * == Evaluation == 
+ *  
+ * `eval`: Compute the value of a numerical (sub) expression, and substitute 
+ * known values. performs the usual arithmetic operations. This function
+ * performs all implemented simplifications.
+ * Terms with unknown symbols are returned un-evaluated. 
+ * 
+ * The known values (the environment) are given in a `Map(name -> expression)`. 
+ * */
 object AstOps {
-  /** Type of the environment, for the variables that are assigned by let. */
+  /** Type of the environment, contains variables that are assigned by let. */
   type Environ = Map[String, Expr]
   val Environ = Map[String, Expr] _
   
@@ -300,8 +327,7 @@ object AstOps {
   }
 
   /** Compute the derivative symbolically */
-  def diff(term: Expr, x: Sym,
-           env: Environ = Environ()): Expr = {
+  def diff(term: Expr, x: Sym, env: Environ = Environ()): Expr = {
     import Expr.toNum
 
     term match {
@@ -323,7 +349,7 @@ object AstOps {
           summands += simplify_mul(Mul(facts_new.toList))
         }
         simplify_add(Add(summands.toList))
-      // Simple case: diff(x**n, x) = n * x**(n-1) - 
+      // Simple case: diff(x**n, x) = n * x**(n-1)
       case Pow(base, Num(expo)) if base == x =>
         expo * simplify_pow(base ** (expo-1))
       //General case (from Maple):
@@ -331,6 +357,7 @@ object AstOps {
       //        u(x)**v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
       case Pow(u, v) =>
         eval((u**v) * (diff(v, x, env)*Log(E, u) + v*diff(u, x)/u), Environ()) //eval to simplify
+      //TODO: Differentiate logarithms
       //Differentiate `let name = value in nextExpr`. 
       case Let(name, value, nextExpr) => {
         //Differentiate the value in the original environment.
@@ -350,7 +377,7 @@ object AstOps {
 }
 
 /** Test the symbolic maths library */
-object SymbolicMain {
+object SymbolicMain1 {
   import AstOps._
   import Expr.toNum
 
@@ -384,6 +411,23 @@ object SymbolicMain {
     assert(a - b + x == Add(a :: Neg(b) :: x :: Nil))
     //mixed * and / work propperly
     assert(a / b * x == Mul(a :: Pow(b, Num(-1)) :: x :: Nil))
+  }
+
+
+  /** Test pretty printing */
+  def test_prettyStr() {
+    assert(prettyStr(Num(23)) == "23.0")
+    assert(prettyStr(a) == "a")
+    assert(prettyStr(Neg(2)) == "-2.0")
+    assert(prettyStr((a + b)) == "a + b")
+    assert(prettyStr((a - b)) == "a + -b")
+    assert(prettyStr((a * b)) == "a * b")
+    assert(prettyStr((a / b)) == "a * b ** -1.0")
+    assert(prettyStr((a ** b)) == "a ** b")
+    assert(prettyStr(Log(a, b)) == "log(a, b)")
+    assert(prettyStr(Let("a", 2, a + x)) == 
+                     "let a := 2.0 in \na + x")
+    println()
   }
 
 
@@ -466,7 +510,7 @@ object SymbolicMain {
     assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
     //diff(a**x, x) = a**x * ln(a)
     assert(diff(a**x, x) == a**x * Log(E, a))
-    //Test environment for let: diff(a, x, Environ("a$x", 23)) == a$x
+    //Test environment with known derivatives: diff(a, x, Environ("a$x", 23)) == a$x
     val (a$x, b$x) = (Sym("a$x"), Sym("b$x"))
     assert(diff(a, x, Environ("a$x" -> 23)) == a$x)
     //diff(let a = x**2 in 
@@ -486,6 +530,10 @@ object SymbolicMain {
   def test_eval() = {
     //Environment: x = 5
     val env = Map("x" -> Num(5))
+    // 2 must be 2
+    assert(eval(Num(2), env) == Num(2))
+    // x must be 5
+    assert(eval(x, env) == Num(5))
     // -x must be -5
     assert(eval(Neg(x), env) == Num(-5))
     // -a must be -a
@@ -526,7 +574,7 @@ object SymbolicMain {
     test_diff()
     test_eval()
 
-    println("Tests finished successfully.")
+    println("Tests finished successfully. (1)")
   }
 }
 
