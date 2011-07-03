@@ -22,15 +22,10 @@
 
 /**
  * Simple Symbolic Algebra in Scala
- * This implementation uses **pattern matching**,  classes are **pure data**.
- *
- * A much more involved project for a miniature programming language in
- * Scala is Kiama:
- * http://code.google.com/p/kiama/wiki/Lambda2
- *
- * See also this discussion:
- * http://www.scala-lang.org/node/6860
- */
+ * 
+ * This implementation uses '''object oriented''' style,  classes contain 
+ * '''data and methods''' that operate on the data.
+  */
 package symath2
 
 import scala.math.{ pow, log, E }
@@ -516,7 +511,7 @@ object AstOps {
 
 
 /** Test the symbolic maths library */
-object SymbolicMain2 {
+object SymbolicMainOo {
   //Import the implicit conversion functions.
   import Expr.{toNum, Environ}
   import AstOps._

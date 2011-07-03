@@ -22,7 +22,10 @@
 
 /**
  * Simple Symbolic Algebra in Scala
- * This implementation uses **pattern matching**,  classes are **pure data**.
+ * 
+ * This implementation uses **pattern matching**,  classes contain 
+ * **only data**. The algorithms that operate on the data are entirely separate 
+ * and reside on object `AstOps`.
  *
  * A much more involved project for a miniature programming language in
  * Scala is Kiama:
@@ -180,9 +183,13 @@ object AstOps {
     }
   }
 
-  //Evaluate an expression in an environment where some symbols are known
-  //Looks up known symbols, performs the usual arithmetic operations.
-  //Terms with unknown symbols are returned un-evaluated.
+  /**
+   *  Evaluates an expression.
+   *  
+   * Evaluate an expression in an environment where some symbols are known
+   * Looks up known symbols, performs the usual arithmetic operations.
+   * Terms with unknown symbols are returned un-evaluated. 
+   */
   def eval(term: Expr, env: Environ = Environ()): Expr = {
     term match {
       case Sym(name)       => env.getOrElse(name, term)
@@ -377,7 +384,7 @@ object AstOps {
 }
 
 /** Test the symbolic maths library */
-object SymbolicMain1 {
+object SymbolicMainM {
   import AstOps._
   import Expr.toNum
 
