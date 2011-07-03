@@ -354,7 +354,7 @@ case class Pow(base: Expr, exponent: Expr) extends Expr {
   /** Convert instance to a pretty printed string. */
   override def prettyStr() = base.prettyStr() + " ** " + exponent.prettyStr()
 
-  /** Simplify Powers */
+  /** Simplify power. */
   override def simplify(): Expr = {
     this match {
       // a**0 = 1
@@ -371,7 +371,7 @@ case class Pow(base: Expr, exponent: Expr) extends Expr {
     }
   }
   
-  /** Evaluate minus sign. */
+  /** Evaluate power. */
   override def eval(env: Environ = Environ()): Expr = 
     Pow(base.eval(env), exponent.eval(env)).simplify()
 
@@ -413,7 +413,7 @@ case class Log(base: Expr, power: Expr) extends Expr {
     }
   }
   
-  /** Evaluate logarithm sign. */
+  /** Evaluate logarithm. */
   override def eval(env: Environ = Environ()): Expr = 
     Log(base.eval(env), power.eval(env)).simplify()
       
@@ -707,6 +707,6 @@ object SymbolicMainOo {
     test_diff()
     test_eval()
 
-    println("Tests finished successfully. (2)")
+    println("Tests finished successfully. (OO)")
   }
 }

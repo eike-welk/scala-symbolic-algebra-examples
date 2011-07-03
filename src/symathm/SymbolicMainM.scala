@@ -153,16 +153,15 @@ object AstOps {
     }
 
     term match {
-      case Num(num)       => num match {
-        case E => "E"
-        case _ => num.toString()
-      }
+      case Num(num) => 
+        if (num == E) "E"
+        else num.toString()
       case Sym(name)      => name
       case Neg(term)      => "-" + prettyStr(term)
       case Add(term_lst)  => convert_join(" + ", term_lst)
       case Mul(term_lst)  => convert_join(" * ", term_lst)
       case Pow(base, exp) => prettyStr(base) + " ** " + prettyStr(exp)
-      case Log(base, pow) => "Log(" + prettyStr(base) + ", " + prettyStr(pow) + ")"
+      case Log(base, pow) => "log(" + prettyStr(base) + ", " + prettyStr(pow) + ")"
       case Let(name, value, in) => 
         "let " + name + " := " + prettyStr(value) + " in \n" + prettyStr(in)
       case _ => throw new IllegalArgumentException(
@@ -577,11 +576,12 @@ object SymbolicMainM {
   /** Run the test application. */
   def main(args : Array[String]) : Unit = {
     test_operators()
+    test_prettyStr()
     test_simplify()
     test_diff()
     test_eval()
 
-    println("Tests finished successfully. (1)")
+    println("Tests finished successfully. (M)")
   }
 }
 
