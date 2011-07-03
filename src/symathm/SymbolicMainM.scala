@@ -34,7 +34,7 @@
  * See also this discussion:
  * http://www.scala-lang.org/node/6860
  */
-package symath1
+package symathm
 
 import scala.math.{ pow, log, E }
 import scala.collection.mutable.ListBuffer

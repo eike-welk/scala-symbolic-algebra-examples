@@ -26,7 +26,7 @@
  * This implementation uses '''object oriented''' style,  classes contain 
  * '''data and methods''' that operate on the data.
   */
-package symath2
+package symathoo
 
 import scala.math.{ pow, log, E }
 import scala.collection.mutable.ListBuffer
