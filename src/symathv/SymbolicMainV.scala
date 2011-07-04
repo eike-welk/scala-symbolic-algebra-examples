@@ -30,6 +30,7 @@ package symathv
 
 import scala.math.{ pow, log, E }
 import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.Stack
 
 //The elements of the AST ----------------------------------------------
 //Expressions also evaluate to nodes of the AST
@@ -198,43 +199,51 @@ abstract class ExprVisitor {
  * Looks up known symbols, performs the usual arithmetic operations.
  * Terms with unknown symbols are returned un-evaluated. 
  */
-class EvalVisitor(inEnvironment: AstOps.Environ) extends ExprVisitor{
+class EvalVisitor(inEnvironment: AstOps.Environ) extends ExprVisitor {
   import AstOps._
   
-  def env = inEnvironment
+  //Stack of environments, the variables are looked up in the environment at 
+  //the top of the stack. The `let` statement pushes its new environment on 
+  //this stack, and pops it when it exits. 
+  val envStack = Stack(inEnvironment)
+  
+  /** Get the current environment. */
+  def env = envStack.top
   
   def visitNum(num: Num) = num
   def visitSym(sym: Sym) = env.getOrElse(sym.name, sym)
-  def visitNeg(neg: Neg) = simplify_neg(Neg(eval(neg.term, env)))
-  def visitAdd(add: Add) = simplify_add(Add(add.summands.map(t => eval(t, env))))
-  def visitMul(mul: Mul) = simplify_mul(Mul(mul.factors.map(t => eval(t, env))))
+  def visitNeg(neg: Neg) = simplify_neg(Neg(neg.term.exprAccept(this)))
+  def visitAdd(add: Add) = simplify_add(Add(add.summands.map(t => t.exprAccept(this))))
+  def visitMul(mul: Mul) = simplify_mul(Mul(mul.factors.map(t => t.exprAccept(this))))
   def visitPow(pow: Pow) = 
-    simplify_pow(Pow(eval(pow.base, env), eval(pow.exponent, env)))
+    simplify_pow(Pow(pow.base.exprAccept(this), pow.exponent.exprAccept(this)))
   def visitLog(log: Log) = 
-    simplify_log(Log(eval(log.base, env), eval(log.power, env)))
-  def visitLet(let: Let) = Sym("Not implemented!")
-//  def eval(term: Expr, env: Environ = Environ()): Expr = {
-//    term match {
-//      case Sym(name)       => env.getOrElse(name, term)
-//      case Neg(term)       => simplify_neg(Neg(eval(term, env)))
-//      case Add(terms)      => simplify_add(Add(terms.map(t => eval(t, env))))
-//      case Mul(terms)      => simplify_mul(Mul(terms.map(t => eval(t, env))))
-//      case Pow(base, expo) =>
-//        simplify_pow(Pow(eval(base, env), eval(expo, env)))
-//      case Log(base, power) =>
-//        simplify_log(Log(eval(base, env), eval(power, env)))
-//      //Add one binding to the environment,
-//      //and evaluate the next expression in the new environment
-//      case Let(name, value, expr_next) => {
-//        val env_new = env.updated(name, eval(value, env))
-//        eval(expr_next, env_new)
-//      }
-//      case _ => term
-//    }
-//  }
+    simplify_log(Log(log.base.exprAccept(this), log.power.exprAccept(this)))
+  def visitLet(let: Let) = {
+    //Add one binding to the environment,
+    //and evaluate the next expression in the new environment
+    val env_new = env.updated(let.name, let.value.exprAccept(this))
+    envStack.push(env_new)
+    val resultNext = let.exprNext.exprAccept(this)
+    envStack.pop()
+    resultNext
+  }
 }
 
 
+/** Visitor that computes the derivative of an expression. */
+class DiffVisitor  extends ExprVisitor {
+  def visitNum(num: Num): Expr = Sym("Not implemented")
+  def visitSym(sym: Sym): Expr = Sym("Not implemented")
+  def visitNeg(neg: Neg): Expr = Sym("Not implemented")
+  def visitAdd(add: Add): Expr = Sym("Not implemented")
+  def visitMul(mul: Mul): Expr = Sym("Not implemented")
+  def visitPow(pow: Pow): Expr = Sym("Not implemented")
+  def visitLog(log: Log): Expr = Sym("Not implemented")
+  def visitLet(let: Let): Expr = Sym("Not implemented")
+}
+
+  
 /** 
  * Functions for operations on the expression (AST) 
  * 
@@ -654,19 +663,19 @@ object SymbolicMainV {
     assert(eval(2 * x * a * 3, env) == 30 * a)
     //let a = 2 in a + x; must be 7
     //pprintln(Let("a", DNum(2), Add(a :: x :: Nil)), true)
-//    assert(eval(Let("a", 2, a + x), env) == Num(7))
-//    //let a = 2 in
-//    //let b = a * x in
-//    //let a = 5 in //a is rebound
-//    //a + b
-//    // must be 5 + 2 * x
-////    pprintln(Let("a", 2, 
-////             Let("b", a * x,
-////             Let("a", 5, a +b))), true)
-//    val emptyEnv = Map[String, Expr]()
-//    assert(eval(Let("a", 2, 
-//                Let("b", a * x,
-//                Let("a", 5, a +b))), emptyEnv) == 5 + 2 * x)
+    assert(eval(Let("a", 2, a + x), env) == Num(7))
+    //let a = 2 in
+    //let b = a * x in
+    //let a = 5 in //a is rebound
+    //a + b
+    // must be 5 + 2 * x
+//    pprintln(Let("a", 2, 
+//             Let("b", a * x,
+//             Let("a", 5, a +b))), true)
+    val emptyEnv = Map[String, Expr]()
+    assert(eval(Let("a", 2, 
+                Let("b", a * x,
+                Let("a", 5, a +b))), emptyEnv) == 5 + 2 * x)
   }
 
   /** Run the test application. */
