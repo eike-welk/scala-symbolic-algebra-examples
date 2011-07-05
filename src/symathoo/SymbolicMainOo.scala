@@ -243,7 +243,7 @@ case class Add(summands: List[Expr]) extends Expr {
     for (s <- this.summands) {
       s match {
         case a: Add => summands_new ++= a.flatten().summands
-        case x      => summands_new ++= List(x)
+        case _      => summands_new += s
       }
     }
     Add(summands_new.toList)
@@ -295,7 +295,7 @@ case class Mul(factors: List[Expr]) extends Expr {
     for (s <- this.factors) {
       s match {
         case m: Mul => factors_new ++= m.flatten().factors
-        case x      => factors_new ++= List(x)
+        case _      => factors_new += s
       }
     }
     Mul(factors_new.toList)

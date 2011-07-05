@@ -231,21 +231,81 @@ class EvalVisitor(inEnvironment: AstOps.Environ) extends ExprVisitor {
 }
 
 
-/** Visitor that computes the derivative of an expression. */
-class DiffVisitor  extends ExprVisitor {
-  def visitNum(num: Num): Expr = Sym("Not implemented")
-  def visitSym(sym: Sym): Expr = Sym("Not implemented")
-  def visitNeg(neg: Neg): Expr = Sym("Not implemented")
-  def visitAdd(add: Add): Expr = Sym("Not implemented")
-  def visitMul(mul: Mul): Expr = Sym("Not implemented")
-  def visitPow(pow: Pow): Expr = Sym("Not implemented")
+/** 
+ * Visitor that computes the derivative of an expression (symbolically). 
+ * 
+ * For a high level interface look at `AstOps.diff`.
+ * 
+ * @param x    The independent variable. Derivation takes place with 
+ *             respect to this variable.
+ * @param env  The environment where known variables are defined. 
+ *             Necessary for computing derivative of `Let` node.
+ *             Empty environments are created with: `Environ()`.
+ * */
+class DiffVisitor(x: Sym, env: AstOps.Environ)  extends ExprVisitor {
+  import AstOps._
+  
+  def visitNum(num: Num): Expr = Num(0)
+  
+  def visitSym(sym: Sym): Expr = {
+    val dName = sym.name + "$" + x.name
+    if (sym.name == x.name)       Num(1)
+    else if (env.contains(dName)) Sym(dName)
+    else                          Num(0)
+  }
+  
+  def visitNeg(neg: Neg): Expr = simplify_neg(Neg(diff(neg.term, x, env)))
+  def visitAdd(add: Add): Expr = simplify_add(Add(add.summands.map(t => diff(t, x, env))))
+  
+  //D(u*v*w) = Du*v*w + u*Dv*w + u*v*Dw
+  def visitMul(mul: Mul): Expr = {
+    val summands = new ListBuffer[Expr]
+    for (i <- 0 until mul.factors.length) {
+      val facts_new = ListBuffer.concat(mul.factors)
+      facts_new(i) = diff(facts_new(i), x, env)
+      summands += simplify_mul(Mul(facts_new.toList))   
+    }
+    simplify_add(Add(summands.toList))
+  }
+  
+  def visitPow(pow: Pow): Expr = {
+    // Simple case: diff(x**n, x) = n * x**(n-1)
+    if (pow.base == x && pow.exponent.isInstanceOf[Num]) {
+      val expo = pow.exponent.asInstanceOf[Num]
+      pow.exponent * simplify_pow(pow.base ** (Num(expo.num-1)))
+    }
+    //General case (from Maple):
+    //      diff(u(x)**v(x), x) =
+    //        u(x)**v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
+    else {
+      val (u, v) = (pow.base, pow.exponent)
+      eval((u**v) * (diff(v, x, env)*Log(E, u) + v*diff(u, x)/u), Environ()) //eval to simplify 
+    }
+  }
+  
+  //TODO: Differentiate logarithms
   def visitLog(log: Log): Expr = Sym("Not implemented")
-  def visitLet(let: Let): Expr = Sym("Not implemented")
+  
+  //Differentiate `let name = value in nextExpr`. 
+  def visitLet(let: Let): Expr = {
+    val (name, value, nextExpr) = (let.name, let.value, let.exprNext)
+    //Differentiate the value in the original environment.
+    val valueD = diff(value, x, env) 
+    //Create new environment where derived value has standardized name.
+    val valueDName = name + "$" + x.name
+    val newEnv =  env.updated(valueDName, valueD)
+    //Derive the next expression in the new environment.
+    val nextExprD = diff(nextExpr, x, newEnv)
+    //create the two intertwined let expressions
+    val innerLet = Let(valueDName, valueD, nextExprD)
+    Let(name, value, innerLet)
+    //TODO: simplify_let: remove unused variables.
+  }
 }
 
   
 /** 
- * Functions for operations on the expression (AST) 
+ * Functions for operations on expressions
  * 
  * == Pretty Printing ==
  * 
@@ -302,9 +362,9 @@ object AstOps {
   }
 
   /**
-   *  Evaluates an expression.
+   *  Evaluate an expression.
    *  
-   * Evaluate an expression in an environment where some symbols are known
+   * Evaluates an expression in an environment where some symbols are known.
    * Looks up known symbols, performs the usual arithmetic operations.
    * Terms with unknown symbols are returned un-evaluated. 
    */
@@ -313,10 +373,16 @@ object AstOps {
     term.exprAccept(v)
   }
   
-  /** Converts a Num to a Double. (Throw exception for any other `Expr` in 
-   * `num`.) */
-  def num2double(num: Expr) = num match {
-    case Num(dbl) => dbl
+  /** Compute the derivative symbolically */
+  def diff(term: Expr, x: Sym, env: Environ = Environ()): Expr = {
+    val v = new DiffVisitor(x, env)
+    term.exprAccept(v)
+  }
+
+  /** Converts a `Num` to a `Double`. (Throw exception for any other `Expr`) */
+  def num2double(numExpr: Expr) = {
+    val num = numExpr.asInstanceOf[Num]
+    num.num
   }
 
   /**
@@ -326,9 +392,12 @@ object AstOps {
   def flatten_add(expr: Add): Add = {
     val summands_new = new ListBuffer[Expr]
     for (s <- expr.summands) {
-      s match {
-        case a: Add => summands_new ++= flatten_add(a).summands
-        case x      => summands_new ++= List(x)
+      if (s.isInstanceOf[Add]) {
+        val a = s.asInstanceOf[Add]
+        summands_new ++= flatten_add(a).summands
+      }
+      else {
+        summands_new += s
       }
     }
     Add(summands_new.toList)
@@ -341,9 +410,12 @@ object AstOps {
   def flatten_mul(expr: Mul): Mul = {
     val factors_new = new ListBuffer[Expr]
     for (s <- expr.factors) {
-      s match {
-        case m: Mul => factors_new ++= flatten_mul(m).factors
-        case x      => factors_new ++= List(x)
+      if (s.isInstanceOf[Mul]) {
+        val m = s.asInstanceOf[Mul]
+        factors_new ++= flatten_mul(m).factors
+      }
+      else {
+        factors_new += s
       }
     }
     Mul(factors_new.toList)
@@ -435,55 +507,6 @@ object AstOps {
       case _ => expr
     }
   }
-
-//  /** Compute the derivative symbolically */
-//  def diff(term: Expr, x: Sym, env: Environ = Environ()): Expr = {
-//    import Expr.toNum
-//
-//    term match {
-//      case Num(_) => Num(0)
-//      case Sym(name) => {
-//        val dName = name + "$" + x.name
-//        if      (name == x.name)      Num(1)
-//        else if (env.contains(dName)) Sym(dName)
-//        else                          Num(0)
-//      }
-//      case Neg(term)     => simplify_neg(Neg(diff(term, x, env)))
-//      case Add(summands) => simplify_add(Add(summands.map(t => diff(t, x, env))))
-//      //D(u*v*w) = Du*v*w + u*Dv*w + u*v*Dw
-//      case Mul(factors) =>
-//        val summands = new ListBuffer[Expr]
-//        for (i <- 0 until factors.length) {
-//          val facts_new = ListBuffer.concat(factors)
-//          facts_new(i) = diff(facts_new(i), x, env)
-//          summands += simplify_mul(Mul(facts_new.toList))
-//        }
-//        simplify_add(Add(summands.toList))
-//      // Simple case: diff(x**n, x) = n * x**(n-1)
-//      case Pow(base, Num(expo)) if base == x =>
-//        expo * simplify_pow(base ** (expo-1))
-//      //General case (from Maple):
-//      //      diff(u(x)**v(x), x) =
-//      //        u(x)**v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
-//      case Pow(u, v) =>
-//        eval((u**v) * (diff(v, x, env)*Log(E, u) + v*diff(u, x)/u), Environ()) //eval to simplify
-//      //TODO: Differentiate logarithms
-//      //Differentiate `let name = value in nextExpr`. 
-//      case Let(name, value, nextExpr) => {
-//        //Differentiate the value in the original environment.
-//        val valueD = diff(value, x, env) 
-//        //Create new environment where derived value has standardized name.
-//        val valueDName = name + "$" + x.name
-//        val newEnv =  env.updated(valueDName, valueD)
-//        //Derive the next expression in the new environment.
-//        val nextExprD = diff(nextExpr, x, newEnv)
-//        //create the two intertwined let expressions
-//        val innerLet = Let(valueDName, valueD, nextExprD)
-//        Let(name, value, innerLet)
-//        //TODO: simplify_let: remove unused variables.
-//      }
-//    }
-//  }
 }
 
 /** Test the symbolic maths library */
@@ -594,46 +617,46 @@ object SymbolicMainV {
 
   /** Test differentiation */
   def test_diff() = {
-//    //diff(2, x) must be 0
-//    assert(diff(Num(2), x) == Num(0))
-//    //diff(a, x)  must be 0
-//    assert(diff(a, x) == Num(0))
-//    //diff(x, x)  must be 1
-//    assert(diff(x, x) == Num(1))
-//    //diff(-x, x) must be -1
-//    //pprintln(diff(Neg(x), x), true)
-//    assert(diff(Neg(x), x) == Num(-1))
-//    //diff(2 + a + x, x) must be 1
-//    assert(diff(2 + a + x, x) == Num(1))
-//    //diff(2 * x, x) must be 2
-//    assert(diff(2 * x, x) == Num(2))
-//    //diff(2 * a * x, x) must be 2 * a
-//    assert(diff(2 * a * x, x) == 2 * a)
-//    //diff(x**2) must be 2*x
-//    //pprintln(diff(x**2, x), true)
-//    assert(diff(x**2, x) == 2 * x)
-//    //x**2 + x + 2 must be 2*x + 1
-////    pprintln(x**2 + x + 2, true)
-////    pprintln(diff(x**2 + x + 2, x), true)
-//    assert(diff(x**2 + x + 2, x) == 1 + 2 * x)
-//    //diff(x**a, x) = a * x**(a-1) - correct but needs more simplification
-//    //pprintln(diff(x**a, x), true)
-//    assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
-//    //diff(a**x, x) = a**x * ln(a)
-//    assert(diff(a**x, x) == a**x * Log(E, a))
-//    //Test environment with known derivatives: diff(a, x, Environ("a$x", 23)) == a$x
-//    val (a$x, b$x) = (Sym("a$x"), Sym("b$x"))
-//    assert(diff(a, x, Environ("a$x" -> 23)) == a$x)
-//    //diff(let a = x**2 in 
-//    //     a + x + 2, x)   =   2*x + 1
-////    pprintln(Let("a", x**2, a + x + 2), true)
-////    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
-//    assert(diff(Let("a", x**2, a + x + 2), x) == 
-//                Let("a", x**2,
-//                Let("a$x", 2 * x, 1 + a$x)))
-//    //Environment: a$x, b$x; diff(a * b, x) == a$x * b + a * b$x
-//    val env1 = Environ("a$x"->0, "b$x"->0)
-//    assert(diff(a * b, x, env1) == a$x * b + a * b$x)
+    //diff(2, x) must be 0
+    assert(diff(Num(2), x) == Num(0))
+    //diff(a, x)  must be 0
+    assert(diff(a, x) == Num(0))
+    //diff(x, x)  must be 1
+    assert(diff(x, x) == Num(1))
+    //diff(-x, x) must be -1
+    //pprintln(diff(Neg(x), x), true)
+    assert(diff(Neg(x), x) == Num(-1))
+    //diff(2 + a + x, x) must be 1
+    assert(diff(2 + a + x, x) == Num(1))
+    //diff(2 * x, x) must be 2
+    assert(diff(2 * x, x) == Num(2))
+    //diff(2 * a * x, x) must be 2 * a
+    assert(diff(2 * a * x, x) == 2 * a)
+    //diff(x**2) must be 2*x
+    //pprintln(diff(x**2, x), true)
+    assert(diff(x**2, x) == 2 * x)
+    //x**2 + x + 2 must be 2*x + 1
+//    pprintln(x**2 + x + 2, true)
+//    pprintln(diff(x**2 + x + 2, x), true)
+    assert(diff(x**2 + x + 2, x) == 1 + 2 * x)
+    //diff(x**a, x) = a * x**(a-1) - correct but needs more simplification
+    //pprintln(diff(x**a, x), true)
+    assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
+    //diff(a**x, x) = a**x * ln(a)
+    assert(diff(a**x, x) == a**x * Log(E, a))
+    //Test environment with known derivatives: diff(a, x, Environ("a$x", 23)) == a$x
+    val (a$x, b$x) = (Sym("a$x"), Sym("b$x"))
+    assert(diff(a, x, Environ("a$x" -> 23)) == a$x)
+    //diff(let a = x**2 in 
+    //     a + x + 2, x)   =   2*x + 1
+//    pprintln(Let("a", x**2, a + x + 2), true)
+//    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
+    assert(diff(Let("a", x**2, a + x + 2), x) == 
+                Let("a", x**2,
+                Let("a$x", 2 * x, 1 + a$x)))
+    //Environment: a$x, b$x; diff(a * b, x) == a$x * b + a * b$x
+    val env1 = Environ("a$x"->0, "b$x"->0)
+    assert(diff(a * b, x, env1) == a$x * b + a * b$x)
   }
 
 

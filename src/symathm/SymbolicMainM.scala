@@ -224,7 +224,7 @@ object AstOps {
     for (s <- expr.summands) {
       s match {
         case a: Add => summands_new ++= flatten_add(a).summands
-        case x      => summands_new ++= List(x)
+        case _      => summands_new += s
       }
     }
     Add(summands_new.toList)
@@ -239,7 +239,7 @@ object AstOps {
     for (s <- expr.factors) {
       s match {
         case m: Mul => factors_new ++= flatten_mul(m).factors
-        case x      => factors_new ++= List(x)
+        case _      => factors_new += s
       }
     }
     Mul(factors_new.toList)
