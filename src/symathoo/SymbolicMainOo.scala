@@ -190,8 +190,12 @@ case class Sym(name: String) extends Expr {
   override def simplify() = this
   /** Returns value of variable. Unknown variables are returned unchanged. */
   override def eval(env: Environ = Environ()): Expr = env.getOrElse(name, this)
-  
-  /** Differentiate variable. */
+
+  /**
+   * Differentiate variable.
+   * The "$" character in variable names denotes derivation: a$x = da/dx
+   * This is used for deriving `Let` nodes.
+   */
   override def diff(x: Sym, env: Environ = Environ()): Expr = {
         val dName = name + "$" + x.name
         if      (name == x.name)      Num(1)

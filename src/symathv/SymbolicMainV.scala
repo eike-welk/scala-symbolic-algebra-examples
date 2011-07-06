@@ -247,6 +247,8 @@ class DiffVisitor(x: Sym, env: AstOps.Environ)  extends ExprVisitor {
   
   def visitNum(num: Num): Expr = Num(0)
   
+  //The "$" character in variable names denotes derivation: a$x = da/dx
+  //This is used for deriving `Let` nodes.
   def visitSym(sym: Sym): Expr = {
     val dName = sym.name + "$" + x.name
     if (sym.name == x.name)       Num(1)

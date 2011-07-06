@@ -338,6 +338,8 @@ object AstOps {
 
     term match {
       case Num(_) => Num(0)
+      //The "$" character in variable names denotes derivation: a$x = da/dx
+      //This is used for deriving `Let` nodes.
       case Sym(name) => {
         val dName = name + "$" + x.name
         if      (name == x.name)      Num(1)
