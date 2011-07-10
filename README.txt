@@ -5,7 +5,15 @@
 -------------------------------------------------------------------------------
 
 This project contains a very simple, and incomplete symbolic maths library in 
-Scala. The library is implemented three times with different paradigms:
+Scala. Additionally it contains some aspects of an internal DSL to make the 
+creation of mathematical expressions relatively painless. 
+
+The library is not intended to be seriously used. Instead it should demonstrate 
+features of Scala that are interesting for programmers that come form 
+traditional object oriented languages; such as: C++, Java, Python, Ruby.
+Especially should the library demonstrate the usefulness of pattern matching.
+Therefore this library is implemented three times with different programming 
+paradigms:
 
 Functional, with pattern matching. 
     Package: `symathm` 

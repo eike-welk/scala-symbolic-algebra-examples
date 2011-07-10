@@ -309,7 +309,8 @@ object AstOps {
       case Pow(base, Num(1))               => base
       // 1**a = 1
       case Pow(Num(1), _)                  => Num(1)
-      // Power is inverse of logarithm - can't find special case
+      // Power is inverse of logarithm - can't find general case
+      // a ** (Log(a, x)) = x
       case Pow(pb, Log(lb, x)) if pb == lb => x
       //Two numbers: compute result numerically
       case Pow(Num(base), Num(expo))       => Num(pow(base, expo))
@@ -317,7 +318,7 @@ object AstOps {
     }
   }
 
-  /** Simplify LOgarithms */
+  /** Simplify Logarithms */
   def simplify_log(expr: Log): Expr = {
     expr match {
       //log(a, 1) = 0
@@ -476,6 +477,18 @@ object SymbolicMainM {
     assert(simplify_add(Num(0) + 1 + 2 + 3) == Num(6))
     // a * b = a * b
     assert(simplify_add(a + b) == a + b)
+
+    //Test `simplify_pow` -----------------------------------------------
+    // a**0 = 1
+    assert(simplify_pow(a ** 0) == Num(1))
+    // a**1 = a
+    assert(simplify_pow(a ** 1) == a)
+    // 1**a = 1
+    assert(simplify_pow(1 ** a) == Num(1))
+    // a ** log(a, x) = x
+    assert(simplify_pow(a ** Log(a, x)) == x)
+    //2 ** 8 = 256: compute result numerically
+    assert(simplify_pow(Pow(2, 8)) == Num(256))
 
     //Test `simplify_log` -----------------------------------------------
     //log(a, 1) = 0

@@ -367,7 +367,8 @@ case class Pow(base: Expr, exponent: Expr) extends Expr {
       case Pow(base, Num(1))               => base
       // 1**a = 1
       case Pow(Num(1), _)                  => Num(1)
-      // Power is inverse of logarithm - can't find special case
+      // Power is inverse of logarithm - can't find general case
+      // a ** Log(a, x) = x
       case Pow(pb, Log(lb, x)) if pb == lb => x
       //Two numbers: compute result numerically
       case Pow(Num(base), Num(expo))       => Num(pow(base, expo))
@@ -402,7 +403,7 @@ case class Log(base: Expr, power: Expr) extends Expr {
   override def prettyStr() = "log(" + base.prettyStr() + ", " + 
                              power.prettyStr() + ")"
 
-  /** Simplify LOgarithms */
+  /** Simplify Logarithms */
   override def simplify(): Expr = {
     this match {
       //log(a, 1) = 0
@@ -604,6 +605,18 @@ object SymbolicMainOo {
     assert((Num(0) + 1 + 2 + 3).simplify() == Num(6))
     // a * b = a * b
     assert((a + b).simplify() == a + b)
+
+    //Test `simplify_pow` -----------------------------------------------
+    // a**0 = 1
+    assert((a ** 0).simplify() == Num(1))
+    // a**1 = a
+    assert((a ** 1).simplify() == a)
+    // 1**a = 1
+    assert((1 ** a).simplify() == Num(1))
+    // a ** log(a, x) = x
+    assert((a ** Log(a, x)).simplify() == x)
+    //2 ** 8 = 256: compute result numerically
+    assert(Pow(2, 8).simplify() == Num(256))
 
     //Test `simplify_log` -----------------------------------------------
     //log(a, 1) = 0
