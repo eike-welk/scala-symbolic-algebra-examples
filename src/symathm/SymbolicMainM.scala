@@ -255,9 +255,6 @@ object AstOps {
     }
   }
 
-  /** Converts a Num to a Double. (Throw exception for any other `Expr`.) */
-  def num2double(expr: Expr) =  expr.asInstanceOf[Num].num
-
   /** Simplify a n-ary addition */
   def simplify_add(expr: Add): Expr = {
     //flatten nested Add
@@ -270,8 +267,8 @@ object AstOps {
 
     //sum the numbers up, keep all other elements unchanged
     val (nums, others) = summands0.partition(t => t.isInstanceOf[Num])
-    val sum = nums.map(num2double).reduceOption((x, y) => x + y)
-                  .map(Num).toList
+    val sum = nums.map(x => x.asInstanceOf[Num].num)
+                  .reduceOption((x, y) => x + y).map(Num).toList
     val summands_s = sum ::: others
 
     //Remove Muls with only one argument:  (* 23) -> 23
@@ -293,8 +290,8 @@ object AstOps {
 
     //multiply the numbers with each other, keep all other elements unchanged
     val (nums, others) = factors1.partition(t => t.isInstanceOf[Num])
-    val prod = nums.map(num2double).reduceOption((x, y) => x * y)
-                   .map(Num).toList
+    val prod = nums.map(x => x.asInstanceOf[Num].num)
+                   .reduceOption((x, y) => x * y).map(Num).toList
     val factors_p = prod ::: others
 
     //Remove Muls with only one argument:  (* 23) -> 23

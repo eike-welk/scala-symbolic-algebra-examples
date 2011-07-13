@@ -14,17 +14,27 @@ package testdsl {
     //implicit conversions so that numbers can be used with the binary operators
     implicit def toNum(inum: Int) = Num(inum)
     implicit def toNum(dnum: Double) = Num(dnum)
+  }
   
-    //def let(equ: Asg*) for multiple assignments in one let expression.
-    //  parameter equ is then an Array[Asg]
-    def let(equ: Asg)(nextExpr: Expr) = {
-      val (name, value) = equ match {
-        case Asg(Sym(name), value) => (name, value)
-        case _ => throw new Exception("Let expression: assignment required!")
-      }
-      Let(name, value, nextExpr)
+  object let {
+    def apply(assignments: Asg*) = {
+      new LetHelper(assignments.toList)
     }
   }
+  
+  class LetHelper (assignments: List[Asg]) {
+    def in(nextExpr: Expr) = {
+      def makeNestedLets(asgList: List[Asg]): Let = {
+        asgList match {
+          case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
+          case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
+          case _ => throw new Exception("Let expression: assignment required!")
+        }
+      }
+      makeNestedLets(assignments)      
+    }
+  }
+  
   
   //The concrete node types
   //Symbols: x
@@ -45,15 +55,20 @@ package testdsl {
 object TestDsl {
   def main(args : Array[String]) : Unit = {
     import testdsl._
-    import testdsl.Expr.let
+//    import testdsl.Expr.let
     
     val x = new Sym("x")
     val a = new Sym("a")
-    val e1 = let(x := a + 3 ) (x ** 2)
-    val e2 = let(x := 3)(let(a := x + x)(a))
-    
+    val e1 = let(x := a + 3 ) in x ** 2
+    val e2 = let(x := 3) in (let(a := x + x) in a**2)
+    val e3 = let(x := 3, a := x + x) in a**2
+//    val e1 = let(x := a + 3 ) (x ** 2)
+//    val e2 = let(x := 3)(let(a := x + x)(a**2))
+//    val e3 = let(x := 3, a := x + x)(a**2)
+//    
     println(e1)
     println(e2)
+    println(e3)
     println("Finished")
   }
 }
