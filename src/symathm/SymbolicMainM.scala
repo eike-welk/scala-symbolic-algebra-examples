@@ -188,6 +188,11 @@ object AstOps {
    * Evaluate an expression in an environment where some symbols are known
    * Looks up known symbols, performs the usual arithmetic operations.
    * Terms with unknown symbols are returned un-evaluated. 
+   * 
+   * @param term  Term that is evaluated.
+   * @param env   The environment where the known variables are stored.
+   *              It is a map: variable name -> value, with the type:
+   *              `String` -> `Expr`. 
    */
   def eval(term: Expr, env: Environ = Environ()): Expr = {
     term match {
@@ -207,12 +212,6 @@ object AstOps {
       }
       case _ => term
     }
-  }
-
-  /** Converts a Num to a Double. (Throw exception for any other `Expr` in 
-   * `num`.) */
-  def num2double(num: Expr) = num match {
-    case Num(dbl) => dbl
   }
 
   /**
@@ -255,6 +254,9 @@ object AstOps {
       case _                     => expr
     }
   }
+
+  /** Converts a Num to a Double. (Throw exception for any other `Expr`.) */
+  def num2double(expr: Expr) =  expr.asInstanceOf[Num].num
 
   /** Simplify a n-ary addition */
   def simplify_add(expr: Add): Expr = {

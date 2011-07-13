@@ -1,15 +1,17 @@
 package pattern
 
-/** Implement the visitor pattern.
-  *
-  */
+/** Implement the visitor pattern. 
+ * 
+ * The visitor pretty-prints a nested mathematical expression. 
+ * */
 package testvisitor {
+  /** Common base class of all expression nodes. */
   abstract class Expr {
-    //import AstOps.{ flatten_add, flatten_mul }
-  
+    //operators to make creation of expressions more easy.
     def +(other: Expr) = Add(this :: other :: Nil)
     def -(other: Expr) = Add(this :: Neg(other) :: Nil)
     
+    /** The function that calls the correct function of the visitor. */
     def accept(v:Visitor): String
   }
   
@@ -27,7 +29,7 @@ package testvisitor {
     def accept(v: Visitor) = v.visitAdd(this)
   }
   
-  
+  /** Base class of all vistors. */
   abstract class Visitor {
     def visitNum(num: Num): String
     def visitSym(sym: Sym): String 
@@ -35,9 +37,17 @@ package testvisitor {
     def visitAdd(add: Add): String 
   }
   
+  /** 
+   * Concrete visitor implementation. 
+   * 
+   * This visitor pretty-prints a nested mathematical expression.
+   * */
   class PrettyStrVisitor extends Visitor{
-    //Convert elements of `terms` to strings,
-    //and place string `sep` between them
+    
+    /** 
+     * Convert elements of `terms` to strings,
+     * and place string `sep` between them 
+     * */
     def convert_join(sep: String, terms: List[Expr]) = {
       val str_lst = terms.map { _.accept(this) }
       str_lst.reduce((s1, s2) => s1 + sep + s2)
@@ -49,6 +59,8 @@ package testvisitor {
     def visitAdd(add: Add) = convert_join(" + ", add.summands)
   }
 }
+
+/** Test the vistor. */
 object TestVisitor {
   def main(args: Array[String]): Unit = {
     import testvisitor._
@@ -62,6 +74,8 @@ object TestVisitor {
     println(two.accept(v))
     println(Neg(x).accept(v))
     println(Add(x :: two :: Nil).accept(v))
+    println((x - Num(5) + x + two).accept(v))
+    
     
     println("Finshed")
   }
