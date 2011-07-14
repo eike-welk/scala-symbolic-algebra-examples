@@ -1,42 +1,38 @@
 package pattern
 
 /** Define an embedded DSL in Scala.
-  *
+  * 
+  * Create a tree of nodes that represents a mathematical expression.
+  * Additionally an assignment expression similar to Ocaml's `let` expression
+  * is supported. 
+  * 
+  * The Scala code to create the tree should look like a regular mathematical 
+  * expression, as closely as possible. The let statement should resemble 
+  * the statement in Ocaml. (`let x = 3 in x**2` which evaluates to `9` in 
+  * Ocaml.) 
+  * 
+  * This tree is similar to an abstract syntax tree (AST).
   */
+
+
+/** Common base class of all expression nodes. */
 package testdsl {
-  //Common base class of all Expression nodes
   class Expr{
+    //Binary operators, so that a tree of Expr nodes can be constructed 
+    //with the normal mathematical operators. 
+    //Only assignment, addition, and power are implemented here.
     def :=(other: Expr) = Asg(this, other)
     def + (other: Expr) = Add(this, other)
     def **(other: Expr) = Pow(this, other)
   }
   object Expr {
-    //implicit conversions so that numbers can be used with the binary operators
-    implicit def toNum(inum: Int) = Num(inum)
-    implicit def toNum(dnum: Double) = Num(dnum)
+    //implicit conversions so that numbers can be used with the binary 
+    //operators. The function's names can be chosen arbitrarily.
+    implicit def int2Num(inum: Int) = Num(inum)
+    implicit def double2Num(dnum: Double) = Num(dnum)
   }
   
-  object let {
-    def apply(assignments: Asg*) = {
-      new LetHelper(assignments.toList)
-    }
-  }
-  
-  class LetHelper (assignments: List[Asg]) {
-    def in(nextExpr: Expr) = {
-      def makeNestedLets(asgList: List[Asg]): Let = {
-        asgList match {
-          case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
-          case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
-          case _ => throw new Exception("Let expression: assignment required!")
-        }
-      }
-      makeNestedLets(assignments)      
-    }
-  }
-  
-  
-  //The concrete node types
+  //The concrete node classes.
   //Symbols: x
   case class Sym(name: String) extends Expr
   //Numbers: 23
@@ -47,28 +43,75 @@ package testdsl {
   case class Pow(base: Expr, expo: Expr) extends Expr
   //Assignment: x := a + b 
   case class Asg(lhs: Expr, rhs: Expr) extends Expr
-  //Bind value to name, and evaluate next expression in new environment: 
-  //let x := a + b in x ** 2
+  //Bind value to name, and evaluate next expression in the new environment: 
+  //let (x := a + b) in x ** 2
   case class Let(name: String, value: Expr, exprNext: Expr) extends Expr
+
+  
+  /** Helper object to create (potentially nested) `let` expressions. 
+   * 
+   * `let (x := 2)` calls `let.apply(x := 2)`
+   * 
+   * The object returns a `LetHelper`, that has a method named`in`. 
+   * */
+  object let {
+    def apply(assignments: Asg*) = {
+      new LetHelper(assignments.toList)
+    }
+  }
+  
+  /** Helper object that embodies the `in` part of (potentially nested) 
+   * `let` expressions. 
+   * 
+   * The `in` method can be called without using a dot or parenthesis.
+   * */
+  class LetHelper (assignments: List[Asg]) {
+    def in(nextExpr: Expr) = {
+      //Recursive function that does the real work. Create a `Let` node for  
+      //each assignment.
+      def makeNestedLets(asgList: List[Asg]): Let = {
+        asgList match {
+          //End of list, or list has only one element.
+          case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
+          //List has multiple elements. The `let` expression for the remaining 
+          //elements is the next expression of the current `let` expression.
+          case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
+          case _ => throw new Exception("Let expression: assignment required!")
+        }
+      }
+      makeNestedLets(assignments)      
+    }
+  }
 }  
 
+
+/** Test the DSL */
 object TestDsl {
   def main(args : Array[String]) : Unit = {
     import testdsl._
-//    import testdsl.Expr.let
     
+    //create two variables
     val x = new Sym("x")
     val a = new Sym("a")
-    val e1 = let(x := a + 3 ) in x ** 2
-    val e2 = let(x := 3) in (let(a := x + x) in a**2)
-    val e3 = let(x := 3, a := x + x) in a**2
-//    val e1 = let(x := a + 3 ) (x ** 2)
-//    val e2 = let(x := 3)(let(a := x + x)(a**2))
-//    val e3 = let(x := 3, a := x + x)(a**2)
-//    
+    
+    //mathematical expressions
+    val e1 = a + x
+    val e2 = a + 2
+    val e3 = a + x**2
+    
+    //Simple `let` expression
+    val l1 = let(x := a + 3 ) in x ** 2
+    //two nested `let` expressions. l2 and l3 are equal.
+    val l2 = let(x := 3) in (let(a := x + x) in a**2)
+    val l3 = let(x := 3, a := x + x) in a**2
+
     println(e1)
     println(e2)
     println(e3)
+    println(l1)
+    println(l2)
+    println(l3)
+    
     println("Finished")
   }
 }
