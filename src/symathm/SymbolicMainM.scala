@@ -67,6 +67,7 @@ abstract class Expr {
   def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
   /** Warning precedence is too low! Precedences of `**` and `*` are equal. */
   def **(other: Expr) = Pow(this, other)
+  def :=(other: Expr) = Asg(this, other)
 }
 
 //The concrete node types
@@ -90,7 +91,11 @@ case class Log(base: Expr, power: Expr) extends Expr
  * Add one binding (name = value) to the environment and evaluate expression
  * `expr_next` in the new environment.
  */
-case class Let(name: String, value: Expr, exprNext: Expr) extends Expr
+case class Let(name: String, value: Expr, exprNext: Expr) extends Expr  
+/** Assignment: `x := a + b `
+ * Only needed by `let` convenience object which creates `Let` nodes with nicer 
+ * syntax. */ 
+case class Asg(lhs: Expr, rhs: Expr) extends Expr
 
 
 /**
@@ -104,6 +109,48 @@ object Expr {
 }
 
 
+//--- Nicer syntax to create `Let` nodes (the "DSL") --------------------------
+/** Helper object to create (potentially nested) `Let` nodes. 
+ *
+ * The object accepts multiple assignments. It creates nested `Let` nodes 
+ * for multiple assignments. Use like this:
+ *    `let (x := 2)` or `let (x := 2, a := 3)`
+ * 
+ * The object returns a `LetHelper`, that has a method named `in`. 
+ *    
+ * `let (x := 2)` calls `let.apply(x := 2)`
+ * */
+object let {
+  def apply(assignments: Asg*) = {
+    new LetHelper(assignments.toList)
+  }
+}
+
+/** Helper object that embodies the `in` part of (potentially nested) 
+ * `let` expressions. 
+ * 
+ * The `in` method can be called without using a dot or parenthesis.
+ * */
+class LetHelper (assignments: List[Asg]) {
+  def in(nextExpr: Expr) = {
+    //Recursive function that does the real work. Create a `Let` node for  
+    //each assignment.
+    def makeNestedLets(asgList: List[Asg]): Let = {
+      asgList match {
+        //End of list, or list has only one element.
+        case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
+        //List has multiple elements. The `let` expression for the remaining 
+        //elements is the next expression of the current `let` expression.
+        case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
+        case _ => throw new Exception("Let expression: assignment required!")
+      }
+    }
+    makeNestedLets(assignments)      
+  }
+}
+
+
+//--- Mathematical operations -------------------------------------------------
 /** 
  * Operations on the expression (AST) 
  * 
@@ -384,6 +431,8 @@ object AstOps {
   }
 }
 
+
+//--- Tests -------------------------------------------------
 /** Test the symbolic maths library */
 object SymbolicMainM {
   import AstOps._
@@ -392,7 +441,7 @@ object SymbolicMainM {
   //Create some symbols for the tests (unknown variables)
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
   
-  /** Test binary operators */
+  /** Test binary operators and `let` DSL */
   def test_operators() = {
     //The basic operations are implemented
     assert(a + b == Add(a :: b :: Nil))
@@ -419,6 +468,9 @@ object SymbolicMainM {
     assert(a - b + x == Add(a :: Neg(b) :: x :: Nil))
     //mixed * and / work propperly
     assert(a / b * x == Mul(a :: Pow(b, Num(-1)) :: x :: Nil))
+    //create `Let` nodes
+    assert((let(a := 1) in a) == Let("a", 1, a))
+    assert((let(a := 1, b := 2) in a) == Let("a", 1, Let("b", 2, a)))
   }
 
 
@@ -530,19 +582,30 @@ object SymbolicMainM {
     assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
     //diff(a**x, x) = a**x * ln(a)
     assert(diff(a**x, x) == a**x * Log(E, a))
-    //Test environment with known derivatives: diff(a, x, Environ("a$x", 23)) == a$x
+    
+    //Test environment with known derivatives: 
+    //The values of the variables `a$x`, `b$x` can be arbitrary. The derivation
+    //algorithm does not look at them. Instead the derivation algorithm looks for 
+    //variables that contain a "$" character in their names. 
+    //Environment: da/dx = a$x
+    //diff(a, x) == a$x
     val (a$x, b$x) = (Sym("a$x"), Sym("b$x"))
-    assert(diff(a, x, Environ("a$x" -> 23)) == a$x)
-    //diff(let a = x**2 in 
-    //     a + x + 2, x)   =   2*x + 1
+    assert(diff(a, x, Environ("a$x" -> 0)) == a$x)
+    //Environment: da/dx = a$x, db/dx = b$x
+    // diff(a * b, x) == a$x * b + a * b$x
+    val env1 = Environ("a$x"->0, "b$x"->0)
+    assert(diff(a * b, x, env1) == a$x * b + a * b$x)
+    
+    //Differentiate `Let` node
+    //diff(let a = x**2 in a + x + 2, x) == let da/dx = 2*x in da/dx + 1 == 2*x + 1
 //    pprintln(Let("a", x**2, a + x + 2), true)
 //    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
     assert(diff(Let("a", x**2, a + x + 2), x) == 
                 Let("a", x**2,
-                Let("a$x", 2 * x, 1 + a$x)))
-    //Environment: a$x, b$x; diff(a * b, x) == a$x * b + a * b$x
-    val env1 = Environ("a$x"->0, "b$x"->0)
-    assert(diff(a * b, x, env1) == a$x * b + a * b$x)
+                Let("a$x", 2 * x, 1 + a$x))) 
+    //same as above with `let` DSL
+    assert(diff(let(a := x**2) in a + x + 2, x) == 
+           (let(a := x**2, a$x := 2 * x) in 1 + a$x))
   }
 
 
@@ -578,13 +641,8 @@ object SymbolicMainM {
     //let a = 5 in //a is rebound
     //a + b
     // must be 5 + 2 * x
-//    pprintln(Let("a", 2, 
-//             Let("b", a * x,
-//             Let("a", 5, a +b))), true)
-    val emptyEnv = Map[String, Expr]()
-    assert(eval(Let("a", 2, 
-                Let("b", a * x,
-                Let("a", 5, a +b))), emptyEnv) == 5 + 2 * x)
+//    pprintln(let(a := 2, b := a * x, a := 5) in a + b)
+    assert(eval(let(a := 2, b := a * x, a := 5) in a + b) == 5 + 2 * x)
   }
 
   /** Run the test application. */

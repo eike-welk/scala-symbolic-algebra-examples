@@ -3,8 +3,8 @@ package pattern
 /** Define an embedded DSL in Scala.
   * 
   * Create a tree of nodes that represents a mathematical expression.
-  * Additionally an assignment expression similar to Ocaml's `let` expression
-  * is supported. 
+  * An assignment expression similar to Ocaml's `let` expression
+  * is supported, and the majority of the odd code is for implementing it. 
   * 
   * The Scala code to create the tree should look like a regular mathematical 
   * expression, as closely as possible. The let statement should resemble 
@@ -15,8 +15,11 @@ package pattern
   */
 
 
-/** Common base class of all expression nodes. */
 package testdsl {
+  /** Common base class of all expression nodes. 
+   * 
+   * For implementing binary operators one only needs the methods of the 
+   * `Expr` class and its associated companion object.*/
   class Expr{
     //Binary operators, so that a tree of Expr nodes can be constructed 
     //with the normal mathematical operators. 
@@ -33,26 +36,30 @@ package testdsl {
   }
   
   //The concrete node classes.
-  //Symbols: x
+  /** Symbols: x */
   case class Sym(name: String) extends Expr
-  //Numbers: 23
+  /** Numbers: 23 */
   case class Num(number: Double) extends Expr
-  //Addition: a + b
+  /** Addition: a + b */
   case class Add(sum1: Expr, sum2: Expr) extends Expr
-  //Power: a ** b
+  /** Power: a ** b */
   case class Pow(base: Expr, expo: Expr) extends Expr
-  //Assignment: x := a + b 
+  /** Assignment: x := a + b */ 
   case class Asg(lhs: Expr, rhs: Expr) extends Expr
-  //Bind value to name, and evaluate next expression in the new environment: 
-  //let (x := a + b) in x ** 2
+  /** Bind value to name, and evaluate next expression in the new environment: 
+   * let (x := a + b) in x ** 2 */
   case class Let(name: String, value: Expr, exprNext: Expr) extends Expr
 
   
-  /** Helper object to create (potentially nested) `let` expressions. 
+  /** Helper object to create (potentially nested) `Let` nodes. 
+   *
+   * The object accepts multiple assignments. It creates nested `Let` nodes 
+   * for multiple assignments. Use like this:
+   *    `let (x := 2)` or `let (x := 2, a := 3)`
    * 
+   * The object returns a `LetHelper`, that has a method named `in`. 
+   *    
    * `let (x := 2)` calls `let.apply(x := 2)`
-   * 
-   * The object returns a `LetHelper`, that has a method named`in`. 
    * */
   object let {
     def apply(assignments: Asg*) = {
@@ -89,6 +96,7 @@ package testdsl {
 object TestDsl {
   def main(args : Array[String]) : Unit = {
     import testdsl._
+    import testdsl.Expr.{double2Num, int2Num} //necessary for e3
     
     //create two variables
     val x = new Sym("x")
@@ -96,8 +104,9 @@ object TestDsl {
     
     //mathematical expressions
     val e1 = a + x
-    val e2 = a + 2
-    val e3 = a + x**2
+    val e2 = a + 2  //implicit converters looked up in `object Expr`.
+    val e3 = 2 + a  //`import testdsl.Expr.int2Num` necessary for this line.
+    val e4 = a + x**2
     
     //Simple `let` expression
     val l1 = let(x := a + 3 ) in x ** 2
@@ -108,6 +117,7 @@ object TestDsl {
     println(e1)
     println(e2)
     println(e3)
+    println(e4)
     println(l1)
     println(l2)
     println(l3)
