@@ -60,12 +60,12 @@ import scala.collection.mutable.ListBuffer
  */
 abstract class Expr {
   //Binary operators
-  def +(other: Expr) = AstOps.flatten_add(Add(this :: other :: Nil))
+  def +(other: Expr) = ExprOps.flatten_add(Add(this :: other :: Nil))
   def -(other: Expr) = Add(this :: Neg(other) :: Nil)
-  def *(other: Expr) = AstOps.flatten_mul(Mul(this :: other :: Nil))
+  def *(other: Expr) = ExprOps.flatten_mul(Mul(this :: other :: Nil))
   def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
-  /** Warning precedence is too low! Precedences of `**` and `*` are equal. */
-  def **(other: Expr) = Pow(this, other)
+  /** Power operator. Must be `~^` to get correct precedence. */
+  def ~^(other: Expr) = Pow(this, other)
   def :=(other: Expr) = Asg(this, other)
 }
 
@@ -103,8 +103,8 @@ case class Asg(lhs: Expr, rhs: Expr) extends Expr
  */
 object Expr {
   //implicit conversions so that numbers can be used with the binary operators
-  implicit def toNum(inum: Int) = Num(inum)
-  implicit def toNum(dnum: Double) = Num(dnum)
+  implicit def int2Num(inum: Int) = Num(inum)
+  implicit def double2Num(dnum: Double) = Num(dnum)
 }
 
 
@@ -178,10 +178,38 @@ class LetHelper (assignments: List[Asg]) {
  * 
  * The known values (the environment) are given in a `Map(name -> expression)`. 
  * */
-object AstOps {
+object ExprOps {
   /** Type of the environment, contains variables that are assigned by let. */
-  type Environ = Map[String, Expr]
-  val Environ = Map[String, Expr] _
+  type Environment = Map[String, Expr]
+  val Environment = Map[String, Expr] _
+  
+  /** 
+   * Convenience object to create an environment from several assignments.
+   * 
+   * Usage:
+   * {{{
+   * val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
+   * val e = Env(a := 2, b := x + 3)
+   * }}} */
+  object Env {
+    import scala.collection.mutable.HashMap
+    
+    def apply(asgs: Asg*) = {
+      val m = new HashMap[String, Expr]()
+      
+      for (a <- asgs) {
+        a match {
+          case Asg(Sym(name), rhs) => m(name) = rhs
+          case Asg(lhs, rhs) => 
+            val msg = "Left hand side of assignment must be a symbol! Got: " +
+                      lhs.toString
+            throw new Exception(msg)
+        }
+      }
+      m.toMap
+    }
+  }
+  
   
   /** 
    * Convert the AST to a traditional infix notation for math (String) 
@@ -189,7 +217,7 @@ object AstOps {
    * For printing see: [[pprintln]] */
   def prettyStr(term: Expr): String = {
     //TODO: insert braces in the right places
-    //TODO: convert a * b**-1 to a / b
+    //TODO: convert a * b~^-1 to a / b
     
     //Convert elements of `terms` to strings,
     //and place string `sep` between them
@@ -206,7 +234,7 @@ object AstOps {
       case Neg(term)      => "-" + prettyStr(term)
       case Add(term_lst)  => convert_join(" + ", term_lst)
       case Mul(term_lst)  => convert_join(" * ", term_lst)
-      case Pow(base, exp) => prettyStr(base) + " ** " + prettyStr(exp)
+      case Pow(base, exp) => prettyStr(base) + " ~^ " + prettyStr(exp)
       case Log(base, pow) => "log(" + prettyStr(base) + ", " + prettyStr(pow) + ")"
       case Let(name, value, in) => 
         "let " + name + " := " + prettyStr(value) + " in \n" + prettyStr(in)
@@ -240,7 +268,7 @@ object AstOps {
    *              It is a map: variable name -> value, with the type:
    *              `String` -> `Expr`. 
    */
-  def eval(term: Expr, env: Environ = Environ()): Expr = {
+  def eval(term: Expr, env: Environment = Environment()): Expr = {
     term match {
       case Sym(name)       => env.getOrElse(name, term)
       case Neg(term)       => simplify_neg(Neg(eval(term, env)))
@@ -332,7 +360,7 @@ object AstOps {
     // 1 * a = a - remove all "1" elements
     val factors1 = mul_f.factors.filterNot(t => t == Num(1))
     if (factors1 == Nil) return Num(1)
-    //TODO: Distribute powers: (a*b*c)**d -> a**d * b**d * c**d
+    //TODO: Distribute powers: (a*b*c)~^d -> a~^d * b~^d * c~^d
 
     //multiply the numbers with each other, keep all other elements unchanged
     val (nums, others) = factors1.partition(t => t.isInstanceOf[Num])
@@ -348,14 +376,14 @@ object AstOps {
   /** Simplify Powers */
   def simplify_pow(expr: Pow): Expr = {
     expr match {
-      // a**0 = 1
+      // a~^0 = 1
       case Pow(_, Num(0))                  => Num(1)
-      // a**1 = a
+      // a~^1 = a
       case Pow(base, Num(1))               => base
-      // 1**a = 1
+      // 1~^a = 1
       case Pow(Num(1), _)                  => Num(1)
       // Power is inverse of logarithm - can't find general case
-      // a ** (Log(a, x)) = x
+      // a ~^ (Log(a, x)) = x
       case Pow(pb, Log(lb, x)) if pb == lb => x
       //Two numbers: compute result numerically
       case Pow(Num(base), Num(expo))       => Num(pow(base, expo))
@@ -370,7 +398,7 @@ object AstOps {
       case Log(_, Num(1))      => Num(0)
       //log(a, a) = 1
       case Log(b, p) if b == p => Num(1)
-      //log(x**n) = n log(x)
+      //log(x~^n) = n log(x)
       case Log(b, Pow(x, n))  => n * Log(b, x)
       //Numeric case
       case Log(Num(b), Num(p)) => Num(log(p) / log(b))
@@ -379,8 +407,8 @@ object AstOps {
   }
 
   /** Compute the derivative symbolically */
-  def diff(term: Expr, x: Sym, env: Environ = Environ()): Expr = {
-    import Expr.toNum
+  def diff(term: Expr, x: Sym, env: Environment = Environment()): Expr = {
+    import Expr.{int2Num, double2Num}
 
     term match {
       case Num(_) => Num(0)
@@ -403,14 +431,14 @@ object AstOps {
           summands += simplify_mul(Mul(facts_new.toList))
         }
         simplify_add(Add(summands.toList))
-      // Simple case: diff(x**n, x) = n * x**(n-1)
+      // Simple case: diff(x~^n, x) = n * x~^(n-1)
       case Pow(base, Num(expo)) if base == x =>
-        expo * simplify_pow(base ** (expo-1))
+        expo * simplify_pow(base ~^ (expo-1))
       //General case (from Maple):
-      //      diff(u(x)**v(x), x) =
-      //        u(x)**v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
+      //      diff(u(x)~^v(x), x) =
+      //        u(x)~^v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
       case Pow(u, v) =>
-        eval((u**v) * (diff(v, x, env)*Log(E, u) + v*diff(u, x)/u), Environ()) //eval to simplify
+        eval((u~^v) * (diff(v, x, env)*Log(E, u) + v*diff(u, x)/u), Environment()) //eval to simplify
       //TODO: Differentiate logarithms
       //Differentiate `let name = value in nextExpr`. 
       case Let(name, value, nextExpr) => {
@@ -434,8 +462,8 @@ object AstOps {
 //--- Tests -------------------------------------------------
 /** Test the symbolic maths library */
 object SymbolicMainM {
-  import AstOps._
-  import Expr.toNum
+  import ExprOps._
+  import Expr.{int2Num, double2Num}
 
   //Create some symbols for the tests (unknown variables)
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
@@ -447,19 +475,19 @@ object SymbolicMainM {
     assert(a - b == Add(a :: Neg(b) :: Nil))
     assert(a * b == Mul(a :: b :: Nil))
     assert(a / b == Mul(a :: Pow(b, Num(-1)) :: Nil))
-    assert(a ** b == Pow(a, b))
+    assert(a ~^ b == Pow(a, b))
     //Mixed operations work
     assert(a + 2 == Add(a :: Num(2) :: Nil))
     assert(a - 2 == Add(a :: Neg(Num(2)) :: Nil))
     assert(a * 2 == Mul(a :: Num(2) :: Nil))
     assert(a / 2 == Mul(a :: Pow(Num(2), Num(-1)) :: Nil))
-    assert(a ** 2 == Pow(a, Num(2)))
+    assert(a ~^ 2 == Pow(a, Num(2)))
     //Implicit conversions work
     assert(2 + a == Add(Num(2) :: a :: Nil))
     assert(2 - a == Add(Num(2) :: Neg(a) :: Nil))
     assert(2 * a == Mul(Num(2) :: a :: Nil))
     assert(2 / a == Mul(Num(2) :: Pow(a, Num(-1)) :: Nil))
-    assert(2 ** a == Pow(Num(2), a))
+    assert(2 ~^ a == Pow(Num(2), a))
     //Nested Add and Mul are flattened
     assert(a + b + x == Add(a :: b :: x :: Nil))
     assert(a * b * x == Mul(a :: b :: x :: Nil))
@@ -481,8 +509,8 @@ object SymbolicMainM {
     assert(prettyStr((a + b)) == "a + b")
     assert(prettyStr((a - b)) == "a + -b")
     assert(prettyStr((a * b)) == "a * b")
-    assert(prettyStr((a / b)) == "a * b ** -1.0")
-    assert(prettyStr((a ** b)) == "a ** b")
+    assert(prettyStr((a / b)) == "a * b ~^ -1.0")
+    assert(prettyStr((a ~^ b)) == "a ~^ b")
     assert(prettyStr(Log(a, b)) == "log(a, b)")
     assert(prettyStr(Let("a", 2, a + x)) == 
                      "let a := 2.0 in \na + x")
@@ -528,15 +556,15 @@ object SymbolicMainM {
     assert(simplify_add(a + b) == a + b)
 
     //Test `simplify_pow` -----------------------------------------------
-    // a**0 = 1
-    assert(simplify_pow(a ** 0) == Num(1))
-    // a**1 = a
-    assert(simplify_pow(a ** 1) == a)
-    // 1**a = 1
-    assert(simplify_pow(1 ** a) == Num(1))
-    // a ** log(a, x) = x
-    assert(simplify_pow(a ** Log(a, x)) == x)
-    //2 ** 8 = 256: compute result numerically
+    // a~^0 = 1
+    assert(simplify_pow(a ~^ 0) == Num(1))
+    // a~^1 = a
+    assert(simplify_pow(a ~^ 1) == a)
+    // 1~^a = 1
+    assert(simplify_pow(1 ~^ a) == Num(1))
+    // a ~^ log(a, x) = x
+    assert(simplify_pow(a ~^ Log(a, x)) == x)
+    //2 ~^ 8 = 256: compute result numerically
     assert(simplify_pow(Pow(2, 8)) == Num(256))
 
     //Test `simplify_log` -----------------------------------------------
@@ -544,9 +572,9 @@ object SymbolicMainM {
     assert(simplify_log(Log(a, 1)) == Num(0))
     //log(a, a) = 1
     assert(simplify_log(Log(a, a)) == Num(1))
-    //log(x**n) = n log(x)
-    assert(simplify_log(Log(a, x**b)) == b * Log(a, x))
-    //log(2, 8) = 3 => 2**3 = 8
+    //log(x~^n) = n log(x)
+    assert(simplify_log(Log(a, x~^b)) == b * Log(a, x))
+    //log(2, 8) = 3 => 2~^3 = 8
     assert(simplify_log(Log(2, 8)) == Num(3))
   }
 
@@ -568,18 +596,18 @@ object SymbolicMainM {
     assert(diff(2 * x, x) == Num(2))
     //diff(2 * a * x, x) must be 2 * a
     assert(diff(2 * a * x, x) == 2 * a)
-    //diff(x**2) must be 2*x
-    //pprintln(diff(x**2, x), true)
-    assert(diff(x**2, x) == 2 * x)
-    //x**2 + x + 2 must be 2*x + 1
-//    pprintln(x**2 + x + 2, true)
-//    pprintln(diff(x**2 + x + 2, x), true)
-    assert(diff(x**2 + x + 2, x) == 1 + 2 * x)
-    //diff(x**a, x) = a * x**(a-1) - correct but needs more simplification
-    //pprintln(diff(x**a, x), true)
-    assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
-    //diff(a**x, x) = a**x * ln(a)
-    assert(diff(a**x, x) == a**x * Log(E, a))
+    //diff(x~^2) must be 2*x
+    //pprintln(diff(x~^2, x), true)
+    assert(diff(x~^2, x) == 2 * x)
+    //x~^2 + x + 2 must be 2*x + 1
+//    pprintln(x~^2 + x + 2, true)
+//    pprintln(diff(x~^2 + x + 2, x), true)
+    assert(diff(x~^2 + x + 2, x) == 1 + 2 * x)
+    //diff(x~^a, x) = a * x~^(a-1) - correct but needs more simplification
+    //pprintln(diff(x~^a, x), true)
+    assert(diff(x~^a, x) == (x~^a) * a * (x~^(-1)))
+    //diff(a~^x, x) = a~^x * ln(a)
+    assert(diff(a~^x, x) == a~^x * Log(E, a))
     
     //Test environment with known derivatives: 
     //The values of the variables `a$x`, `b$x` can be arbitrary. The derivation
@@ -588,29 +616,30 @@ object SymbolicMainM {
     //Environment: da/dx = a$x
     //diff(a, x) == a$x
     val (a$x, b$x) = (Sym("a$x"), Sym("b$x"))
-    assert(diff(a, x, Environ("a$x" -> 0)) == a$x)
+    assert(diff(a, x, Env(a$x := 0)) == a$x)
     //Environment: da/dx = a$x, db/dx = b$x
     // diff(a * b, x) == a$x * b + a * b$x
-    val env1 = Environ("a$x"->0, "b$x"->0)
+    val env1 = Env(a$x := 0, b$x := 0)
     assert(diff(a * b, x, env1) == a$x * b + a * b$x)
     
     //Differentiate `Let` node
-    //diff(let a = x**2 in a + x + 2, x) == let da/dx = 2*x in da/dx + 1 == 2*x + 1
-//    pprintln(Let("a", x**2, a + x + 2), true)
-//    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
-    assert(diff(Let("a", x**2, a + x + 2), x) == 
-                Let("a", x**2,
+    //diff(let a = x~^2 in a + x + 2, x) == let da/dx = 2*x in da/dx + 1 == 2*x + 1
+//    pprintln(Let("a", x~^2, a + x + 2), true)
+//    pprintln(diff(Let("a", x~^2, a + x + 2), x), true)
+    assert(diff(Let("a", x~^2, a + x + 2), x) == 
+                Let("a", x~^2,
                 Let("a$x", 2 * x, 1 + a$x))) 
     //same as above with `let` DSL
-    assert(diff(let(a := x**2) in a + x + 2, x) == 
-           (let(a := x**2, a$x := 2 * x) in 1 + a$x))
+    assert(diff(let(a := x~^2) in a + x + 2, x) == 
+           (let(a := x~^2, a$x := 2 * x) in 1 + a$x))
   }
 
 
   /** Test evaluation of expressions */
   def test_eval() = {
     //Environment: x = 5
-    val env = Map("x" -> Num(5))
+    val env = Env(x := 5)
+    assert(env == Map("x" -> Num(5)))
     
     // 2 must be 2
     assert(eval(Num(2), env) == Num(2))
@@ -620,11 +649,11 @@ object SymbolicMainM {
     assert(eval(Neg(x), env) == Num(-5))
     // -a must be -a
     assert(eval(Neg(a), env) == Neg(a))
-    // x**2 must be 25
-    assert(eval(x**2, env) == Num(25))
-    // x**a must be 5**a
+    // x~^2 must be 25
+    assert(eval(x~^2, env) == Num(25))
+    // x~^a must be 5~^a
     //pprintln(eval(Pow(x, a), env), true)
-    assert(eval(x**a, env) == 5**a)
+    assert(eval(x~^a, env) == 5~^a)
     //log(2, 8) must be 3
     assert(eval(Log(2, 8), env) == Num(3))
     // 2 + x + a + 3 must be 10 + a
