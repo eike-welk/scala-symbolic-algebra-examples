@@ -52,15 +52,16 @@ import scala.collection.mutable.Stack
  * }}}
  */
 abstract class Expr {
-//  import AstOps.{ flatten_add, flatten_mul }
-
+  //Binary operators
   def +(other: Expr) = AstOps.flatten_add(Add(this :: other :: Nil))
   def -(other: Expr) = Add(this :: Neg(other) :: Nil)
   def *(other: Expr) = AstOps.flatten_mul(Mul(this :: other :: Nil))
   def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
   /** Warning precedence is too low! Precedences of `**` and `*` are equal. */
   def **(other: Expr) = Pow(this, other)
+  def :=(other: Expr) = Asg(this, other)
   
+  //Infrastructure for visitors 
   /** Call into visitor that computes a string. */
   def acceptStr(v: StrVisitor): String
   /** Call into visitor that computes an expression. */
@@ -113,6 +114,13 @@ case class Let(name: String, value: Expr, exprNext: Expr) extends Expr {
   override def acceptStr(v: StrVisitor) = v.visitLet(this)
   override def acceptExpr(v: ExprVisitor) = v.visitLet(this)
 }
+/** Assignment: `x := a + b `
+ * Only needed by `let` convenience object which creates `Let` nodes with nicer 
+ * syntax. */ 
+case class Asg(lhs: Expr, rhs: Expr) extends Expr {
+  override def acceptStr(v: StrVisitor) = {throw new Exception("Not implemented!")}
+  override def acceptExpr(v: ExprVisitor) = {throw new Exception("Not implemented!")}
+}
 
 
 /**
@@ -126,6 +134,48 @@ object Expr {
 }
 
 
+//--- Nicer syntax to create `Let` nodes (the "DSL") --------------------------
+/** Helper object to create (potentially nested) `Let` nodes. 
+ *
+ * The object accepts multiple assignments. It creates nested `Let` nodes 
+ * for multiple assignments. Use like this:
+ *    `let (x := 2)` or `let (x := 2, a := 3)`
+ * 
+ * The object returns a `LetHelper`, that has a method named `in`. 
+ *    
+ * `let (x := 2)` calls `let.apply(x := 2)`
+ * */
+object let {
+  def apply(assignments: Asg*) = {
+    new LetHelper(assignments.toList)
+  }
+}
+
+/** Helper object that embodies the `in` part of (potentially nested) 
+ * `let` expressions. 
+ * 
+ * The `in` method can be called without using a dot or parenthesis.
+ * */
+class LetHelper (assignments: List[Asg]) {
+  def in(nextExpr: Expr) = {
+    //Recursive function that does the real work. Create a `Let` node for  
+    //each assignment.
+    def makeNestedLets(asgList: List[Asg]): Let = {
+      asgList match {
+        //End of list, or list has only one element.
+        case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
+        //List has multiple elements. The `let` expression for the remaining 
+        //elements is the next expression of the current `let` expression.
+        case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
+        case _ => throw new Exception("Let expression: assignment required!")
+      }
+    }
+    makeNestedLets(assignments)      
+  }
+}
+
+
+//--- Mathematical operations -------------------------------------------------
 /** 
  * Base class of visitors that return strings. 
  * 
@@ -330,7 +380,7 @@ class DiffVisitor(x: Sym, env: AstOps.Environ)  extends ExprVisitor {
   }
   
   //TODO: Differentiate logarithms
-  def visitLog(log: Log): Expr = Sym("Not implemented")
+  def visitLog(log: Log): Expr = {throw new Exception("Not implemented!")}
   
   //Differentiate `let name = value in nextExpr`. 
   def visitLet(let: Let): Expr = {
@@ -352,6 +402,8 @@ class DiffVisitor(x: Sym, env: AstOps.Environ)  extends ExprVisitor {
   
 /** 
  * Functions for operations on expressions
+ * 
+ * Especially useful are the following high level wrapper functions.
  * 
  * == Pretty Printing ==
  * 
@@ -425,12 +477,6 @@ object AstOps {
     term.acceptExpr(v)
   }
 
-  /** Converts a `Num` to a `Double`. (Throw exception for any other `Expr`) */
-  def num2double(numExpr: Expr) = {
-    val num = numExpr.asInstanceOf[Num]
-    num.num
-  }
-
   /**
    * Convert nested additions to flat n-ary additions:
    * `(+ a (+ b c)) => (+ a b c)`
@@ -497,8 +543,8 @@ object AstOps {
 
     //sum the numbers up, keep all other elements unchanged
     val (nums, others) = summands0.partition(t => t.isInstanceOf[Num])
-    val sum = nums.map(num2double).reduceOption((x, y) => x + y)
-                  .map(Num).toList
+    val sum = nums.map(x => x.asInstanceOf[Num].num)
+                  .reduceOption((x, y) => x + y).map(Num).toList
     val summands_s = sum ::: others
 
     //Remove Muls with only one argument:  (* 23) -> 23
@@ -520,8 +566,8 @@ object AstOps {
 
     //multiply the numbers with each other, keep all other elements unchanged
     val (nums, others) = factors1.partition(t => t.isInstanceOf[Num])
-    val prod = nums.map(num2double).reduceOption((x, y) => x * y)
-                   .map(Num).toList
+    val prod = nums.map(x => x.asInstanceOf[Num].num)
+                   .reduceOption((x, y) => x * y).map(Num).toList
     val factors_p = prod ::: others
 
     //Remove Muls with only one argument:  (* 23) -> 23
@@ -627,6 +673,9 @@ object SymbolicMainV {
     assert(a - b + x == Add(a :: Neg(b) :: x :: Nil))
     //mixed * and / work propperly
     assert(a / b * x == Mul(a :: Pow(b, Num(-1)) :: x :: Nil))
+    //create `Let` nodes
+    assert((let(a := 1) in a) == Let("a", 1, a))
+    assert((let(a := 1, b := 2) in a) == Let("a", 1, Let("b", 2, a)))
   }
 
 
@@ -739,19 +788,30 @@ object SymbolicMainV {
     assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
     //diff(a**x, x) = a**x * ln(a)
     assert(diff(a**x, x) == a**x * Log(E, a))
-    //Test environment with known derivatives: diff(a, x, Environ("a$x", 23)) == a$x
+    
+    //Test environment with known derivatives: 
+    //The values of the variables `a$x`, `b$x` can be arbitrary. The derivation
+    //algorithm does not look at them. Instead the derivation algorithm looks for 
+    //variables that contain a "$" character in their names. 
+    //Environment: da/dx = a$x
+    //diff(a, x) == a$x
     val (a$x, b$x) = (Sym("a$x"), Sym("b$x"))
-    assert(diff(a, x, Environ("a$x" -> 23)) == a$x)
-    //diff(let a = x**2 in 
-    //     a + x + 2, x)   =   2*x + 1
+    assert(diff(a, x, Environ("a$x" -> 0)) == a$x)
+    //Environment: da/dx = a$x, db/dx = b$x
+    // diff(a * b, x) == a$x * b + a * b$x
+    val env1 = Environ("a$x"->0, "b$x"->0)
+    assert(diff(a * b, x, env1) == a$x * b + a * b$x)
+    
+    //Differentiate `Let` node
+    //diff(let a = x**2 in a + x + 2, x) == let da/dx = 2*x in da/dx + 1 == 2*x + 1
 //    pprintln(Let("a", x**2, a + x + 2), true)
 //    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
     assert(diff(Let("a", x**2, a + x + 2), x) == 
                 Let("a", x**2,
-                Let("a$x", 2 * x, 1 + a$x)))
-    //Environment: a$x, b$x; diff(a * b, x) == a$x * b + a * b$x
-    val env1 = Environ("a$x"->0, "b$x"->0)
-    assert(diff(a * b, x, env1) == a$x * b + a * b$x)
+                Let("a$x", 2 * x, 1 + a$x))) 
+    //same as above with `let` DSL
+    assert(diff(let(a := x**2) in a + x + 2, x) == 
+           (let(a := x**2, a$x := 2 * x) in 1 + a$x))
   }
 
 
@@ -759,6 +819,7 @@ object SymbolicMainV {
   def test_eval() = {
     //Environment: x = 5
     val env = Map("x" -> Num(5))
+    
     // 2 must be 2
     assert(eval(Num(2), env) == Num(2))
     // x must be 5
@@ -781,19 +842,14 @@ object SymbolicMainV {
     assert(eval(2 * x * a * 3, env) == 30 * a)
     //let a = 2 in a + x; must be 7
     //pprintln(Let("a", DNum(2), Add(a :: x :: Nil)), true)
-    assert(eval(Let("a", 2, a + x), env) == Num(7))
+    assert(eval(let(a := 2) in a + x, env) == Num(7))
     //let a = 2 in
     //let b = a * x in
     //let a = 5 in //a is rebound
     //a + b
     // must be 5 + 2 * x
-//    pprintln(Let("a", 2, 
-//             Let("b", a * x,
-//             Let("a", 5, a +b))), true)
-    val emptyEnv = Map[String, Expr]()
-    assert(eval(Let("a", 2, 
-                Let("b", a * x,
-                Let("a", 5, a +b))), emptyEnv) == 5 + 2 * x)
+//    pprintln(let(a := 2, b := a * x, a := 5) in a + b)
+    assert(eval(let(a := 2, b := a * x, a := 5) in a + b) == 5 + 2 * x)
   }
 
   /** Run the test application. */

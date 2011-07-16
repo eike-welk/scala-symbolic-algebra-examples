@@ -59,11 +59,10 @@ import scala.collection.mutable.ListBuffer
  * }}}
  */
 abstract class Expr {
-  import AstOps.{ flatten_add, flatten_mul }
-
-  def +(other: Expr) = flatten_add(Add(this :: other :: Nil))
+  //Binary operators
+  def +(other: Expr) = AstOps.flatten_add(Add(this :: other :: Nil))
   def -(other: Expr) = Add(this :: Neg(other) :: Nil)
-  def *(other: Expr) = flatten_mul(Mul(this :: other :: Nil))
+  def *(other: Expr) = AstOps.flatten_mul(Mul(this :: other :: Nil))
   def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
   /** Warning precedence is too low! Precedences of `**` and `*` are equal. */
   def **(other: Expr) = Pow(this, other)
@@ -487,7 +486,6 @@ object SymbolicMainM {
     assert(prettyStr(Log(a, b)) == "log(a, b)")
     assert(prettyStr(Let("a", 2, a + x)) == 
                      "let a := 2.0 in \na + x")
-    println()
   }
 
 
@@ -613,6 +611,7 @@ object SymbolicMainM {
   def test_eval() = {
     //Environment: x = 5
     val env = Map("x" -> Num(5))
+    
     // 2 must be 2
     assert(eval(Num(2), env) == Num(2))
     // x must be 5
@@ -635,7 +634,7 @@ object SymbolicMainM {
     assert(eval(2 * x * a * 3, env) == 30 * a)
     //let a = 2 in a + x; must be 7
     //pprintln(Let("a", DNum(2), Add(a :: x :: Nil)), true)
-    assert(eval(Let("a", 2, a + x), env) == Num(7))
+    assert(eval(let(a := 2) in a + x, env) == Num(7))
     //let a = 2 in
     //let b = a * x in
     //let a = 5 in //a is rebound

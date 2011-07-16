@@ -52,6 +52,11 @@ import scala.collection.mutable.ListBuffer
  * val myExpr = 2 * (x**2) + 2 * x + 3
  * }}}
  * 
+ * `Expr` and its subclasses contain several methods that operate on the tree 
+ * of expressions. The implementations in this base class mostly do not work,
+ * but throw exceptions. (However they are not abstract to be able to test 
+ * partial implementations.)
+ * 
  * == Pretty Printing ==
  * 
  * `prettyStr`: convert each instance to a pretty printed string.
@@ -87,6 +92,7 @@ abstract class Expr {
   def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
   /** Warning precedence is too low! Precedences of `**` and `*` are equal. */
   def **(other: Expr) = Pow(this, other)
+  def :=(other: Expr) = Asg(this, other)
 
   /**
    * Convert instance to a pretty printed string.
@@ -155,12 +161,6 @@ object Expr {
   def convert_join(sep: String, terms: List[Expr]) = {
     val str_lst = terms.map(t => t.prettyStr())
     str_lst.reduce((s1, s2) => s1 + sep + s2)
-  }
-  
-  /** Converts a Num to a Double. (Throw exception for any other `Expr` in 
-   * `num`.) */
-  def num2double(num: Expr) = num match {
-    case Num(dbl) => dbl
   }
 }
 
@@ -268,8 +268,8 @@ case class Add(summands: List[Expr]) extends Expr {
 
     //sum the numbers up, keep all other elements unchanged
     val (nums, others) = summands0.partition(t => t.isInstanceOf[Num])
-    val sum = nums.map(Expr.num2double).reduceOption((x, y) => x + y)
-                  .map(Num).toList
+    val sum = nums.map(x => x.asInstanceOf[Num].num)
+                  .reduceOption((x, y) => x + y).map(Num).toList
     val summands_s = sum ::: others
 
     //Remove Muls with only one argument:  (* 23) -> 23
@@ -322,8 +322,8 @@ case class Mul(factors: List[Expr]) extends Expr {
 
     //multiply the numbers with each other, keep all other elements unchanged
     val (nums, others) = factors1.partition(t => t.isInstanceOf[Num])
-    val prod = nums.map(Expr.num2double).reduceOption((x, y) => x * y)
-                   .map(Num).toList
+    val prod = nums.map(x => x.asInstanceOf[Num].num)
+                   .reduceOption((x, y) => x * y).map(Num).toList
     val factors_p = prod ::: others
 
     //Remove Muls with only one argument:  (* 23) -> 23
@@ -466,11 +466,60 @@ case class Let(name: String, value: Expr, exprNext: Expr) extends Expr{
     Let(name, value, innerLet)
     //TODO: simplify_let: remove unused variables.
   }
+}  
+
+/** Assignment: `x := a + b `
+ * Only needed by `let` convenience object which creates `Let` nodes with nicer 
+ * syntax. */ 
+case class Asg(lhs: Expr, rhs: Expr) extends Expr
+
+
+//--- Nicer syntax to create `Let` nodes (the "DSL") --------------------------
+/** Helper object to create (potentially nested) `Let` nodes. 
+ *
+ * The object accepts multiple assignments. It creates nested `Let` nodes 
+ * for multiple assignments. Use like this:
+ *    `let (x := 2)` or `let (x := 2, a := 3)`
+ * 
+ * The object returns a `LetHelper`, that has a method named `in`. 
+ *    
+ * `let (x := 2)` calls `let.apply(x := 2)`
+ * */
+object let {
+  def apply(assignments: Asg*) = {
+    new LetHelper(assignments.toList)
+  }
+}
+
+/** Helper object that embodies the `in` part of (potentially nested) 
+ * `let` expressions. 
+ * 
+ * The `in` method can be called without using a dot or parenthesis.
+ * */
+class LetHelper (assignments: List[Asg]) {
+  def in(nextExpr: Expr) = {
+    //Recursive function that does the real work. Create a `Let` node for  
+    //each assignment.
+    def makeNestedLets(asgList: List[Asg]): Let = {
+      asgList match {
+        //End of list, or list has only one element.
+        case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
+        //List has multiple elements. The `let` expression for the remaining 
+        //elements is the next expression of the current `let` expression.
+        case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
+        case _ => throw new Exception("Let expression: assignment required!")
+      }
+    }
+    makeNestedLets(assignments)      
+  }
 }
 
 
 /** 
  * Operations on the AST 
+ * 
+ * This object contains high level wrapper functions that provide a convenient
+ * interface to the functionality of `Expr` and its sub-classes.
  * 
  * == Pretty Printing ==
  * 
@@ -551,6 +600,9 @@ object SymbolicMainOo {
     assert(a - b + x == Add(a :: Neg(b) :: x :: Nil))
     //mixed * and / work propperly
     assert(a / b * x == Mul(a :: Pow(b, Num(-1)) :: x :: Nil))
+    //create `Let` nodes
+    assert((let(a := 1) in a) == Let("a", 1, a))
+    assert((let(a := 1, b := 2) in a) == Let("a", 1, Let("b", 2, a)))
   }
 
   /** Test pretty printing */
@@ -566,7 +618,6 @@ object SymbolicMainOo {
     assert(Log(a, b).prettyStr() == "log(a, b)")
     assert(Let("a", 2, a + x).prettyStr() == 
            "let a := 2.0 in \na + x")
-    println()
   }
 
   /** test simplification functions */
@@ -659,19 +710,30 @@ object SymbolicMainOo {
     assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
     //diff(a**x, x) = a**x * ln(a)
     assert(diff(a**x, x) == a**x * Log(E, a))
-    //Test environment with known derivatives: diff(a, x, Environ("a$x", 23)) == a$x
+    
+    //Test environment with known derivatives: 
+    //The values of the variables `a$x`, `b$x` can be arbitrary. The derivation
+    //algorithm does not look at them. Instead the derivation algorithm looks for 
+    //variables that contain a "$" character in their names. 
+    //Environment: da/dx = a$x
+    //diff(a, x) == a$x
     val (a$x, b$x) = (Sym("a$x"), Sym("b$x"))
-    assert(diff(a, x, Environ("a$x" -> 23)) == a$x)
-    //diff(let a = x**2 in 
-    //     a + x + 2, x)   =   2*x + 1
+    assert(diff(a, x, Environ("a$x" -> 0)) == a$x)
+    //Environment: da/dx = a$x, db/dx = b$x
+    // diff(a * b, x) == a$x * b + a * b$x
+    val env1 = Environ("a$x"->0, "b$x"->0)
+    assert(diff(a * b, x, env1) == a$x * b + a * b$x)
+    
+    //Differentiate `Let` node
+    //diff(let a = x**2 in a + x + 2, x) == let da/dx = 2*x in da/dx + 1 == 2*x + 1
 //    pprintln(Let("a", x**2, a + x + 2), true)
 //    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
     assert(diff(Let("a", x**2, a + x + 2), x) == 
                 Let("a", x**2,
-                Let("a$x", 2 * x, 1 + a$x)))
-//    //Environment: a$x, b$x; diff(a * b, x) == a$x * b + a * b$x
-//    val env1 = Environ("a$x"->0, "b$x"->0)
-//    assert(diff(a * b, x, env1) == a$x * b + a * b$x)
+                Let("a$x", 2 * x, 1 + a$x))) 
+    //same as above with `let` DSL
+    assert(diff(let(a := x**2) in a + x + 2, x) == 
+           (let(a := x**2, a$x := 2 * x) in 1 + a$x))
   }
 
 
@@ -701,19 +763,14 @@ object SymbolicMainOo {
     assert(eval(2 * x * a * 3, env) == 30 * a)
     //let a = 2 in a + x; must be 7
     //pprintln(Let("a", DNum(2), Add(a :: x :: Nil)), true)
-    assert(eval(Let("a", 2, a + x), env) == Num(7))
+    assert(eval(let(a := 2) in a + x, env) == Num(7))
     //let a = 2 in
     //let b = a * x in
     //let a = 5 in //a is rebound
     //a + b
     // must be 5 + 2 * x
-//    pprintln(Let("a", 2, 
-//             Let("b", a * x,
-//             Let("a", 5, a +b))), true)
-    val emptyEnv = Map[String, Expr]()
-    assert(eval(Let("a", 2, 
-                Let("b", a * x,
-                Let("a", 5, a +b))), emptyEnv) == 5 + 2 * x)
+//    pprintln(let(a := 2, b := a * x, a := 5) in a + b)
+    assert(eval(let(a := 2, b := a * x, a := 5) in a + b) == 5 + 2 * x)
   }
   
   
