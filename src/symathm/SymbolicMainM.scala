@@ -39,115 +39,148 @@ package symathm
 import scala.math.{ pow, log, E }
 import scala.collection.mutable.ListBuffer
 
-//The elements of the AST ----------------------------------------------
-//Expressions also evaluate to nodes of the AST
-
 /**
- * Common base class of all AST nodes.
- *
- * Implement binary operations for the elements of the AST.
- * `Int` and `Double` can be mixed with `Expr` (AST) nodes when using binary 
- * operators, because the companion object defines implicit conversions to 
- * [[symbolic_maths.Num]].
- * 
- * In the following code snippet `myExpr` is an [[symbolic_maths.Add]]. Note
- * the parenthesis around `x**2`; the power operators precedence is too low. 
- * It is equal to the precedence of `*`.
- * {{{
- * val x = Sym("x")
- * val myExpr = 2 * (x**2) + 2 * x + 3
- * }}}
+ * Define the expression's nodes, and the DSL.
  */
-abstract class Expr {
-  //Binary operators
-  def +(other: Expr) = ExprOps.flatten_add(Add(this :: other :: Nil))
-  def -(other: Expr) = Add(this :: Neg(other) :: Nil)
-  def *(other: Expr) = ExprOps.flatten_mul(Mul(this :: other :: Nil))
-  def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
-  /** Power operator. Must be `~^` to get correct precedence. */
-  def ~^(other: Expr) = Pow(this, other)
-  def :=(other: Expr) = Asg(this, other)
-}
-
-//The concrete node types
-/** Numbers */
-case class Num(num: Double) extends Expr
-/** Symbols (references to variables) */
-case class Sym(name: String) extends Expr
-/** Unary minus (-x) */
-case class Neg(term: Expr) extends Expr
-/** N-ary addition (+ a b c d). Subtraction is emulated with the unary minus operator */
-case class Add(summands: List[Expr]) extends Expr
-/** N-ary multiplication (* a b c d); division is emulated with power */
-case class Mul(factors: List[Expr]) extends Expr
-/** Power (exponentiation) operator */
-case class Pow(base: Expr, exponent: Expr) extends Expr
-/** Logarithm to arbitrary base */
-case class Log(base: Expr, power: Expr) extends Expr
-/**
- * ML style binding operator
- * 
- * Add one binding (name = value) to the environment and evaluate expression
- * `expr_next` in the new environment.
- */
-case class Let(name: String, value: Expr, exprNext: Expr) extends Expr  
-/** Assignment: `x := a + b `
- * Only needed by `let` convenience object which creates `Let` nodes with nicer 
- * syntax. */ 
-case class Asg(lhs: Expr, rhs: Expr) extends Expr
-
-
-/**
- * Implicit conversions from [[scala.Int]] and [[scala.Double]] to 
- * [[symbolic_maths.Num]].
- */
-object Expr {
-  //implicit conversions so that numbers can be used with the binary operators
-  implicit def int2Num(inum: Int) = Num(inum)
-  implicit def double2Num(dnum: Double) = Num(dnum)
-}
-
-
-//--- Nicer syntax to create `Let` nodes (the "DSL") --------------------------
-/** Helper object to create (potentially nested) `Let` nodes. 
- *
- * The object accepts multiple assignments. It creates nested `Let` nodes 
- * for multiple assignments. Use like this:
- *    `let (x := 2)` or `let (x := 2, a := 3)`
- * 
- * The object returns a `LetHelper`, that has a method named `in`. 
- *    
- * `let (x := 2)` calls `let.apply(x := 2)`
- * */
-object let {
-  def apply(assignments: Asg*) = {
-    new LetHelper(assignments.toList)
+object Expression {
+  //The elements of the AST ----------------------------------------------
+  /**
+   * Common base class of all expression (AST) nodes.
+   *
+   * Implement binary operations for the elements of the AST.
+   * `Int` and `Double` can be mixed with `Expr` (AST) nodes when using binary 
+   * operators, because the companion object defines implicit conversions to 
+   * [[symbolic_maths.Num]].
+   * 
+   * In the following code snippet `myExpr` is an [[symbolic_maths.Add]]. Note
+   * the parenthesis around `x**2`; the power operators precedence is too low. 
+   * It is equal to the precedence of `*`.
+   * {{{
+   * val x = Sym("x")
+   * val myExpr = 2 * (x**2) + 2 * x + 3
+   * }}}
+   */
+  abstract class Expr {
+    //Binary operators
+    def +(other: Expr) = ExprOps.flatten_add(Add(this :: other :: Nil))
+    def -(other: Expr) = Add(this :: Neg(other) :: Nil)
+    def *(other: Expr) = ExprOps.flatten_mul(Mul(this :: other :: Nil))
+    def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
+    /** Power operator. Can't be `**` or `^`, their precedence is too low. */
+    def ~^(other: Expr) = Pow(this, other)
+    def :=(other: Expr) = Asg(this, other)
   }
-}
-
-/** Helper object that embodies the `in` part of (potentially nested) 
- * `let` expressions. 
- * 
- * The `in` method can be called without using a dot or parenthesis.
- * */
-class LetHelper (assignments: List[Asg]) {
-  def in(nextExpr: Expr) = {
-    //Recursive function that does the real work. Create a `Let` node for  
-    //each assignment.
-    def makeNestedLets(asgList: List[Asg]): Let = {
-      asgList match {
-        //End of list, or list has only one element.
-        case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
-        //List has multiple elements. The `let` expression for the remaining 
-        //elements is the next expression of the current `let` expression.
-        case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
-        case _ => throw new Exception("Let expression: assignment required!")
+  
+  //The concrete node types
+  /** Numbers */
+  case class Num(num: Double) extends Expr
+  /** Symbols (references to variables) */
+  case class Sym(name: String) extends Expr
+  /** Unary minus (-x) */
+  case class Neg(term: Expr) extends Expr
+  /** N-ary addition (+ a b c d). Subtraction is emulated with the unary minus operator */
+  case class Add(summands: List[Expr]) extends Expr
+  /** N-ary multiplication (* a b c d); division is emulated with power */
+  case class Mul(factors: List[Expr]) extends Expr
+  /** Power (exponentiation) operator */
+  case class Pow(base: Expr, exponent: Expr) extends Expr
+  /** Logarithm to arbitrary base */
+  case class Log(base: Expr, power: Expr) extends Expr
+  /**
+   * ML style binding operator
+   * 
+   * Add one binding (name = value) to the environment and evaluate expression
+   * `expr_next` in the new environment.
+   */
+  case class Let(name: String, value: Expr, exprNext: Expr) extends Expr  
+  /** Assignment: `x := a + b `
+   * Only needed by `let` convenience object which creates `Let` nodes with nicer 
+   * syntax. */ 
+  case class Asg(lhs: Expr, rhs: Expr) extends Expr
+  
+  
+  /**
+   * Implicit conversions from [[scala.Int]] and [[scala.Double]] to 
+   * [[symbolic_maths.Num]].
+   */
+  object Expr {
+    //implicit conversions so that numbers can be used with the binary operators
+    implicit def int2Num(inum: Int) = Num(inum)
+    implicit def double2Num(dnum: Double) = Num(dnum)
+  }
+  
+  /** Type of the environment, contains variables that are assigned by let. */
+  type Environment = Map[String, Expr]
+  val Environment = Map[String, Expr] _
+  
+  
+  //--- Nicer syntax (the "DSL") ---------------------------------------------
+  /** 
+   * Convenience object to create an environment from several assignments.
+   * 
+   * Usage:
+   * {{{
+   * val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
+   * val e = Env(a := 2, b := x + 3)
+   * }}} */
+  object Env {
+    import scala.collection.mutable.HashMap
+    
+    def apply(asgs: Asg*) = {
+      val m = new HashMap[String, Expr]()
+      
+      for (a <- asgs) {
+        a match {
+          case Asg(Sym(name), rhs) => m(name) = rhs
+          case Asg(lhs, rhs) => 
+            val msg = "Left hand side of assignment must be a symbol! Got: " +
+                      lhs.toString
+            throw new Exception(msg)
+        }
       }
+      m.toMap
     }
-    makeNestedLets(assignments)      
+  }
+  
+  /** Helper object to create (potentially nested) `Let` nodes. 
+   *
+   * The object accepts multiple assignments. It creates nested `Let` nodes 
+   * for multiple assignments. Use like this:
+   *    `let (x := 2)` or `let (x := 2, a := 3)`
+   * 
+   * The object returns a `LetHelper`, that has a method named `in`. 
+   *    
+   * `let (x := 2)` calls `let.apply(x := 2)`
+   * */
+  object let {
+    def apply(assignments: Asg*) = {
+      new LetHelper(assignments.toList)
+    }
+  }
+  
+  /** Helper object that embodies the `in` part of (potentially nested) 
+   * `let` expressions. 
+   * 
+   * The `in` method can be called without using a dot or parenthesis.
+   * */
+  class LetHelper (assignments: List[Asg]) {
+    def in(nextExpr: Expr) = {
+      //Recursive function that does the real work. Create a `Let` node for  
+      //each assignment.
+      def makeNestedLets(asgList: List[Asg]): Let = {
+        asgList match {
+          //End of list, or list has only one element.
+          case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
+          //List has multiple elements. The `let` expression for the remaining 
+          //elements is the next expression of the current `let` expression.
+          case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
+          case _ => throw new Exception("Let expression: assignment required!")
+        }
+      }
+      makeNestedLets(assignments)      
+    }
   }
 }
-
 
 //--- Mathematical operations -------------------------------------------------
 /** 
@@ -179,37 +212,7 @@ class LetHelper (assignments: List[Asg]) {
  * The known values (the environment) are given in a `Map(name -> expression)`. 
  * */
 object ExprOps {
-  /** Type of the environment, contains variables that are assigned by let. */
-  type Environment = Map[String, Expr]
-  val Environment = Map[String, Expr] _
-  
-  /** 
-   * Convenience object to create an environment from several assignments.
-   * 
-   * Usage:
-   * {{{
-   * val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
-   * val e = Env(a := 2, b := x + 3)
-   * }}} */
-  object Env {
-    import scala.collection.mutable.HashMap
-    
-    def apply(asgs: Asg*) = {
-      val m = new HashMap[String, Expr]()
-      
-      for (a <- asgs) {
-        a match {
-          case Asg(Sym(name), rhs) => m(name) = rhs
-          case Asg(lhs, rhs) => 
-            val msg = "Left hand side of assignment must be a symbol! Got: " +
-                      lhs.toString
-            throw new Exception(msg)
-        }
-      }
-      m.toMap
-    }
-  }
-  
+  import Expression._
   
   /** 
    * Convert the AST to a traditional infix notation for math (String) 
@@ -462,8 +465,9 @@ object ExprOps {
 //--- Tests -------------------------------------------------
 /** Test the symbolic maths library */
 object SymbolicMainM {
+  import Expression._
   import ExprOps._
-  import Expr.{int2Num, double2Num}
+  import Expr.{int2Num, double2Num} //enables `2 * x` instead of `Num(2) * x`
 
   //Create some symbols for the tests (unknown variables)
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))

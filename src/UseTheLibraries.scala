@@ -5,22 +5,22 @@
  * demonstrate the three different implementations of the
  * symbolic math library. As the libraries have the same functionality and 
  * interface, the functions should have (almost) the same code and produce 
- * the same output.
+ * the same output.  
  */
-object UseTheLibribraries {
+object UseTheLibraries {
   
   def useSyMathM() {
     println("Start of function `useSyMathM`. -----------------------")
     
-    import symathm._
+    import symathm.Expression._
     import symathm.ExprOps._
-    import symathm.Expr.{int2Num, double2Num}
+    import Expr.{int2Num, double2Num}
     
     //Create some symbols (unknown variables)
     val (a, b, c, x) = (Sym("a"), Sym("b"), Sym("c"), Sym("x"))
 
     //Create an expression. `~^` denotes exponentiation (power).
-    val expr1 = 2 * x ~^ 4 + 5 * x ~^ 2 + x ~^ 0.5 
+    val expr1 = 2 * x~^4 + 5 * x~^2 + x~^0.5 
     //Print the expression.
     pprintln(expr1) 
     //Differentiate the expression with respect to `x`
