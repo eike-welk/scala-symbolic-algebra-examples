@@ -70,6 +70,12 @@ object Expression {
     def ~^(other: Expr) = Pow(this, other)
     def :=(other: Expr) = Asg(this, other)
   }
+  object Expr {
+    //implicit conversions so that numbers can be used with the binary operators
+    implicit def int2Num(inum: Int) = Num(inum)
+    implicit def double2Num(dnum: Double) = Num(dnum)
+  }
+  
   
   //The concrete node types
   /** Numbers */
@@ -98,16 +104,6 @@ object Expression {
    * syntax. */ 
   case class Asg(lhs: Expr, rhs: Expr) extends Expr
   
-  
-  /**
-   * Implicit conversions from [[scala.Int]] and [[scala.Double]] to 
-   * [[symbolic_maths.Num]].
-   */
-  object Expr {
-    //implicit conversions so that numbers can be used with the binary operators
-    implicit def int2Num(inum: Int) = Num(inum)
-    implicit def double2Num(dnum: Double) = Num(dnum)
-  }
   
   /** Type of the environment, contains variables that are assigned by let. */
   type Environment = Map[String, Expr]
@@ -141,6 +137,7 @@ object Expression {
       m.toMap
     }
   }
+  
   
   /** Helper object to create (potentially nested) `Let` nodes. 
    *
@@ -181,6 +178,7 @@ object Expression {
     }
   }
 }
+
 
 //--- Mathematical operations -------------------------------------------------
 /** 
@@ -516,8 +514,7 @@ object SymbolicMainM {
     assert(prettyStr((a / b)) == "a * b ~^ -1.0")
     assert(prettyStr((a ~^ b)) == "a ~^ b")
     assert(prettyStr(Log(a, b)) == "log(a, b)")
-    assert(prettyStr(Let("a", 2, a + x)) == 
-                     "let a := 2.0 in \na + x")
+    assert(prettyStr(Let("a", 2, a + x)) == "let a := 2.0 in \na + x")
   }
 
 

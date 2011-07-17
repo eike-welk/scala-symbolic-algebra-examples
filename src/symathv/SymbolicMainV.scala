@@ -32,148 +32,178 @@ import scala.math.{ pow, log, E }
 import scala.collection.mutable.ListBuffer
 import scala.collection.mutable.Stack
 
-//The elements of the AST ----------------------------------------------
-//Expressions also evaluate to nodes of the AST
-
 /**
- * Common base class of all AST nodes.
- *
- * Implement binary operations for the elements of the AST.
- * `Int` and `Double` can be mixed with `Expr` (AST) nodes when using binary 
- * operators, because the companion object defines implicit conversions to 
- * [[symbolic_maths.Num]].
- * 
- * In the following code snippet `myExpr` is an [[symbolic_maths.Add]]. Note
- * the parenthesis around `x**2`; the power operators precedence is too low. 
- * It is equal to the precedence of `*`.
- * {{{
- * val x = Sym("x")
- * val myExpr = 2 * (x**2) + 2 * x + 3
- * }}}
+ * Define the expression's nodes, and the DSL.
  */
-abstract class Expr {
-  //Binary operators
-  def +(other: Expr) = AstOps.flatten_add(Add(this :: other :: Nil))
-  def -(other: Expr) = Add(this :: Neg(other) :: Nil)
-  def *(other: Expr) = AstOps.flatten_mul(Mul(this :: other :: Nil))
-  def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
-  /** Warning precedence is too low! Precedences of `**` and `*` are equal. */
-  def **(other: Expr) = Pow(this, other)
-  def :=(other: Expr) = Asg(this, other)
+object Expression {
+  //The elements of the AST ----------------------------------------------
+  /**
+   * Common base class of all AST nodes.
+   *
+   * Implement binary operations for the elements of the AST.
+   * `Int` and `Double` can be mixed with `Expr` (AST) nodes when using binary 
+   * operators, because the companion object defines implicit conversions to 
+   * [[symbolic_maths.Num]].
+   * 
+   * In the following code snippet `myExpr` is an [[symbolic_maths.Add]]. Note
+   * the parenthesis around `x**2`; the power operators precedence is too low. 
+   * It is equal to the precedence of `*`.
+   * {{{
+   * val x = Sym("x")
+   * val myExpr = 2 * (x**2) + 2 * x + 3
+   * }}}
+   */
+  abstract class Expr {
+    //Binary operators
+    def +(other: Expr) = ExprOps.flatten_add(Add(this :: other :: Nil))
+    def -(other: Expr) = Add(this :: Neg(other) :: Nil)
+    def *(other: Expr) = ExprOps.flatten_mul(Mul(this :: other :: Nil))
+    def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
+    /** Power operator. Can't be `**` or `^`, their precedence is too low. */
+    def ~^(other: Expr) = Pow(this, other)
+    def :=(other: Expr) = Asg(this, other)
+    
+    //Infrastructure for visitors 
+    /** Call into visitor that computes a string. */
+    def acceptStr(v: StrVisitor): String
+    /** Call into visitor that computes an expression. */
+    def acceptExpr(v: ExprVisitor): Expr
+  }
+  object Expr {
+    //implicit conversions so that numbers can be used with the binary operators
+    implicit def int2Num(inum: Int) = Num(inum)
+    implicit def double2Num(dnum: Double) = Num(dnum)
+  }
   
-  //Infrastructure for visitors 
-  /** Call into visitor that computes a string. */
-  def acceptStr(v: StrVisitor): String
-  /** Call into visitor that computes an expression. */
-  def acceptExpr(v: ExprVisitor): Expr
-}
-
-//The concrete node types
-/** Numbers */
-case class Num(num: Double) extends Expr {
-  override def acceptStr(v: StrVisitor) = v.visitNum(this)
-  override def acceptExpr(v: ExprVisitor) = v.visitNum(this)
-}
-/** Symbols (references to variables) */
-case class Sym(name: String) extends Expr {
-  override def acceptStr(v: StrVisitor) = v.visitSym(this)
-  override def acceptExpr(v: ExprVisitor) = v.visitSym(this)
-}
-/** Unary minus (-x) */
-case class Neg(term: Expr) extends Expr {
-  override def acceptStr(v: StrVisitor) = v.visitNeg(this)
-  override def acceptExpr(v: ExprVisitor) = v.visitNeg(this)
-}
-/** N-ary addition (+ a b c d). Subtraction is emulated with the unary minus operator */
-case class Add(summands: List[Expr]) extends Expr {
-  override def acceptStr(v: StrVisitor) = v.visitAdd(this)
-  override def acceptExpr(v: ExprVisitor) = v.visitAdd(this)
-}
-/** N-ary multiplication (* a b c d); division is emulated with power */
-case class Mul(factors: List[Expr]) extends Expr {
-  override def acceptStr(v: StrVisitor) = v.visitMul(this)
-  override def acceptExpr(v: ExprVisitor) = v.visitMul(this)
-}
-/** Power (exponentiation) operator */
-case class Pow(base: Expr, exponent: Expr) extends Expr {
-  override def acceptStr(v: StrVisitor) = v.visitPow(this)
-  override def acceptExpr(v: ExprVisitor) = v.visitPow(this)
-}
-/** Logarithm to arbitrary base */
-case class Log(base: Expr, power: Expr) extends Expr {
-  override def acceptStr(v: StrVisitor) = v.visitLog(this)
-  override def acceptExpr(v: ExprVisitor) = v.visitLog(this)
-}
-/**
- * ML style binding operator
- * 
- * Add one binding (name = value) to the environment and evaluate expression
- * `expr_next` in the new environment.
- */
-case class Let(name: String, value: Expr, exprNext: Expr) extends Expr {
-  override def acceptStr(v: StrVisitor) = v.visitLet(this)
-  override def acceptExpr(v: ExprVisitor) = v.visitLet(this)
-}
-/** Assignment: `x := a + b `
- * Only needed by `let` convenience object which creates `Let` nodes with nicer 
- * syntax. */ 
-case class Asg(lhs: Expr, rhs: Expr) extends Expr {
-  override def acceptStr(v: StrVisitor) = {throw new Exception("Not implemented!")}
-  override def acceptExpr(v: ExprVisitor) = {throw new Exception("Not implemented!")}
-}
-
-
-/**
- * Implicit conversions from [[scala.Int]] and [[scala.Double]] to 
- * [[symbolic_maths.Num]].
- */
-object Expr {
-  //implicit conversions so that numbers can be used with the binary operators
-  implicit def toNum(inum: Int) = Num(inum)
-  implicit def toNum(dnum: Double) = Num(dnum)
-}
-
-
-//--- Nicer syntax to create `Let` nodes (the "DSL") --------------------------
-/** Helper object to create (potentially nested) `Let` nodes. 
- *
- * The object accepts multiple assignments. It creates nested `Let` nodes 
- * for multiple assignments. Use like this:
- *    `let (x := 2)` or `let (x := 2, a := 3)`
- * 
- * The object returns a `LetHelper`, that has a method named `in`. 
- *    
- * `let (x := 2)` calls `let.apply(x := 2)`
- * */
-object let {
-  def apply(assignments: Asg*) = {
-    new LetHelper(assignments.toList)
+  
+  //The concrete node types
+  /** Numbers */
+  case class Num(num: Double) extends Expr {
+    override def acceptStr(v: StrVisitor) = v.visitNum(this)
+    override def acceptExpr(v: ExprVisitor) = v.visitNum(this)
   }
-}
-
-/** Helper object that embodies the `in` part of (potentially nested) 
- * `let` expressions. 
- * 
- * The `in` method can be called without using a dot or parenthesis.
- * */
-class LetHelper (assignments: List[Asg]) {
-  def in(nextExpr: Expr) = {
-    //Recursive function that does the real work. Create a `Let` node for  
-    //each assignment.
-    def makeNestedLets(asgList: List[Asg]): Let = {
-      asgList match {
-        //End of list, or list has only one element.
-        case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
-        //List has multiple elements. The `let` expression for the remaining 
-        //elements is the next expression of the current `let` expression.
-        case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
-        case _ => throw new Exception("Let expression: assignment required!")
+  /** Symbols (references to variables) */
+  case class Sym(name: String) extends Expr {
+    override def acceptStr(v: StrVisitor) = v.visitSym(this)
+    override def acceptExpr(v: ExprVisitor) = v.visitSym(this)
+  }
+  /** Unary minus (-x) */
+  case class Neg(term: Expr) extends Expr {
+    override def acceptStr(v: StrVisitor) = v.visitNeg(this)
+    override def acceptExpr(v: ExprVisitor) = v.visitNeg(this)
+  }
+  /** N-ary addition (+ a b c d). Subtraction is emulated with the unary minus operator */
+  case class Add(summands: List[Expr]) extends Expr {
+    override def acceptStr(v: StrVisitor) = v.visitAdd(this)
+    override def acceptExpr(v: ExprVisitor) = v.visitAdd(this)
+  }
+  /** N-ary multiplication (* a b c d); division is emulated with power */
+  case class Mul(factors: List[Expr]) extends Expr {
+    override def acceptStr(v: StrVisitor) = v.visitMul(this)
+    override def acceptExpr(v: ExprVisitor) = v.visitMul(this)
+  }
+  /** Power (exponentiation) operator */
+  case class Pow(base: Expr, exponent: Expr) extends Expr {
+    override def acceptStr(v: StrVisitor) = v.visitPow(this)
+    override def acceptExpr(v: ExprVisitor) = v.visitPow(this)
+  }
+  /** Logarithm to arbitrary base */
+  case class Log(base: Expr, power: Expr) extends Expr {
+    override def acceptStr(v: StrVisitor) = v.visitLog(this)
+    override def acceptExpr(v: ExprVisitor) = v.visitLog(this)
+  }
+  /**
+   * ML style binding operator
+   * 
+   * Add one binding (name = value) to the environment and evaluate expression
+   * `expr_next` in the new environment.
+   */
+  case class Let(name: String, value: Expr, exprNext: Expr) extends Expr {
+    override def acceptStr(v: StrVisitor) = v.visitLet(this)
+    override def acceptExpr(v: ExprVisitor) = v.visitLet(this)
+  }
+  /** Assignment: `x := a + b `
+   * Only needed by `let` convenience object which creates `Let` nodes with nicer 
+   * syntax. */ 
+  case class Asg(lhs: Expr, rhs: Expr) extends Expr {
+    override def acceptStr(v: StrVisitor) = {throw new Exception("Not implemented!")}
+    override def acceptExpr(v: ExprVisitor) = {throw new Exception("Not implemented!")}
+  }
+  
+  
+  /** Type of the environment, contains variables that are assigned by let. */
+  type Environment = Map[String, Expr]
+  val Environment = Map[String, Expr] _
+  
+  
+  //--- Nicer syntax (the "DSL") ---------------------------------------------
+  /** 
+   * Convenience object to create an environment from several assignments.
+   * 
+   * Usage:
+   * {{{
+   * val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
+   * val e = Env(a := 2, b := x + 3)
+   * }}} */
+  object Env {
+    import scala.collection.mutable.HashMap
+    
+    def apply(asgs: Asg*) = {
+      val m = new HashMap[String, Expr]()
+      
+      for (a <- asgs) {
+        a match {
+          case Asg(Sym(name), rhs) => m(name) = rhs
+          case Asg(lhs, rhs) => 
+            val msg = "Left hand side of assignment must be a symbol! Got: " +
+                      lhs.toString
+            throw new Exception(msg)
+        }
       }
+      m.toMap
     }
-    makeNestedLets(assignments)      
+  }
+  
+  
+  /** Helper object to create (potentially nested) `Let` nodes. 
+   *
+   * The object accepts multiple assignments. It creates nested `Let` nodes 
+   * for multiple assignments. Use like this:
+   *    `let (x := 2)` or `let (x := 2, a := 3)`
+   * 
+   * The object returns a `LetHelper`, that has a method named `in`. 
+   *    
+   * `let (x := 2)` calls `let.apply(x := 2)`
+   * */
+  object let {
+    def apply(assignments: Asg*) = {
+      new LetHelper(assignments.toList)
+    }
+  }
+  
+  /** Helper object that embodies the `in` part of (potentially nested) 
+   * `let` expressions. 
+   * 
+   * The `in` method can be called without using a dot or parenthesis.
+   * */
+  class LetHelper (assignments: List[Asg]) {
+    def in(nextExpr: Expr) = {
+      //Recursive function that does the real work. Create a `Let` node for  
+      //each assignment.
+      def makeNestedLets(asgList: List[Asg]): Let = {
+        asgList match {
+          //End of list, or list has only one element.
+          case Asg(Sym(name), value) :: Nil =>      Let(name, value, nextExpr)
+          //List has multiple elements. The `let` expression for the remaining 
+          //elements is the next expression of the current `let` expression.
+          case Asg(Sym(name), value) :: moreAsgs => Let(name, value, makeNestedLets(moreAsgs))
+          case _ => throw new Exception("Let expression: assignment required!")
+        }
+      }
+      makeNestedLets(assignments)      
+    }
   }
 }
-
 
 //--- Mathematical operations -------------------------------------------------
 /** 
@@ -184,6 +214,8 @@ class LetHelper (assignments: List[Asg]) {
  * which in turn calls the correct method of the visitor.
  * */
 abstract class StrVisitor {
+  import Expression._
+  
   def visitNum(num: Num): String
   def visitSym(sym: Sym): String
   def visitNeg(neg: Neg): String
@@ -213,6 +245,7 @@ abstract class StrVisitor {
  * }}}
  */
 class PrettyStrVisitor extends StrVisitor {
+  import Expression._
   
   //Convert elements of `terms` to strings,
   //and place string `sep` between them
@@ -231,7 +264,7 @@ class PrettyStrVisitor extends StrVisitor {
   def visitAdd(add: Add): String = convert_join(" + ", add.summands)
   def visitMul(mul: Mul): String = convert_join(" * ", mul.factors)
   def visitPow(pow: Pow): String = 
-    pow.base.acceptStr(this) + " ** " + pow.exponent.acceptStr(this)
+    pow.base.acceptStr(this) + " ~^ " + pow.exponent.acceptStr(this)
   def visitLog(log: Log): String = 
     "log(" + log.base.acceptStr(this) + ", " + log.power.acceptStr(this) + ")"
   def visitLet(let: Let): String = 
@@ -248,6 +281,8 @@ class PrettyStrVisitor extends StrVisitor {
  * which in turn calls the correct method of the visitor.
  * */
 abstract class ExprVisitor {
+  import Expression._
+  
   def visitNum(num: Num): Expr
   def visitSym(sym: Sym): Expr
   def visitNeg(neg: Neg): Expr
@@ -266,7 +301,7 @@ abstract class ExprVisitor {
  * Looks up known symbols, performs the usual arithmetic operations.
  * Terms with unknown symbols are returned un-evaluated. 
  * 
- * For conveniently evaluating expressions use: [[symathv.AstOps.eval]]
+ * For conveniently evaluating expressions use: [[symathv.ExprOps.eval]]
  * 
  * Users must first create a EvalVisitor. 
  * Then call the method `acceptExpr(visitor)` of an `Expr` node, 
@@ -280,8 +315,9 @@ abstract class ExprVisitor {
  * pprintln((Num(21) + 2).acceptExpr(v))
  * }}}
  */
-class EvalVisitor(inEnvironment: AstOps.Environ) extends ExprVisitor {
-  import AstOps._
+class EvalVisitor(inEnvironment: Expression.Environment) extends ExprVisitor {
+  import Expression._
+  import ExprOps._
   
   //Stack of environments, the variables are looked up in the environment at 
   //the top of the stack. The `let` statement pushes its new environment on 
@@ -315,7 +351,7 @@ class EvalVisitor(inEnvironment: AstOps.Environ) extends ExprVisitor {
 /** 
  * Visitor that computes the derivative of an expression (symbolically). 
  * 
- * For a high level interface look at [[symathv.AstOps.diff]].
+ * For a high level interface look at [[symathv.ExprOps.diff]].
  * 
  * Users must first create a DiffVisitor. 
  * Then call the method `acceptExpr(visitor)` of an `Expr` node, 
@@ -334,10 +370,12 @@ class EvalVisitor(inEnvironment: AstOps.Environ) extends ExprVisitor {
  *             respect to this variable.
  * @param env  The environment where known variables are defined. 
  *             Necessary for computing derivative of `Let` node.
- *             Empty environments are created with: `Environ()`.
+ *             Empty environments are created with: `Environment()`.
  * */
-class DiffVisitor(x: Sym, env: AstOps.Environ)  extends ExprVisitor {
-  import AstOps._
+class DiffVisitor(x: Expression.Sym, env: Expression.Environment)  
+  extends ExprVisitor {
+  import Expression._
+  import ExprOps._
   
   def visitNum(num: Num): Expr = Num(0)
   
@@ -351,7 +389,8 @@ class DiffVisitor(x: Sym, env: AstOps.Environ)  extends ExprVisitor {
   }
   
   def visitNeg(neg: Neg): Expr = simplify_neg(Neg(diff(neg.term, x, env)))
-  def visitAdd(add: Add): Expr = simplify_add(Add(add.summands.map(t => diff(t, x, env))))
+  def visitAdd(add: Add): Expr = 
+    simplify_add(Add(add.summands.map(t => diff(t, x, env))))
   
   //D(u*v*w) = Du*v*w + u*Dv*w + u*v*Dw
   def visitMul(mul: Mul): Expr = {
@@ -368,14 +407,14 @@ class DiffVisitor(x: Sym, env: AstOps.Environ)  extends ExprVisitor {
     // Simple case: diff(x**n, x) = n * x**(n-1)
     if (pow.base == x && pow.exponent.isInstanceOf[Num]) {
       val expo = pow.exponent.asInstanceOf[Num]
-      pow.exponent * simplify_pow(pow.base ** (Num(expo.num-1)))
+      pow.exponent * simplify_pow(pow.base ~^ (Num(expo.num-1)))
     }
     //General case (from Maple):
-    //      diff(u(x)**v(x), x) =
-    //        u(x)**v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
+    //      diff(u(x)~^v(x), x) =
+    //        u(x)~^v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
     else {
       val (u, v) = (pow.base, pow.exponent)
-      eval((u**v) * (diff(v, x, env)*Log(E, u) + v*diff(u, x)/u), Environ()) //eval to simplify 
+      eval((u~^v) * (diff(v, x, env)*Log(E, u) + v*diff(u, x)/u), Environment()) //eval to simplify 
     }
   }
   
@@ -430,10 +469,8 @@ class DiffVisitor(x: Sym, env: AstOps.Environ)  extends ExprVisitor {
  * 
  * The known values (the environment) are given in a `Map(name -> expression)`. 
  * */
-object AstOps {
-  /** Type of the environment, contains variables that are assigned by let. */
-  type Environ = Map[String, Expr]
-  val Environ = Map[String, Expr] _
+object ExprOps {
+  import Expression._
   
   /** 
    * Convert the AST to a traditional infix notation for math (String) 
@@ -466,13 +503,13 @@ object AstOps {
    * Looks up known symbols, performs the usual arithmetic operations.
    * Terms with unknown symbols are returned un-evaluated. 
    */
-  def eval(term: Expr, env: Environ = Environ()): Expr = {
+  def eval(term: Expr, env: Environment = Environment()): Expr = {
     val v = new EvalVisitor(env)
     term.acceptExpr(v)
   }
   
   /** Compute the derivative symbolically */
-  def diff(term: Expr, x: Sym, env: Environ = Environ()): Expr = {
+  def diff(term: Expr, x: Sym, env: Environment = Environment()): Expr = {
     val v = new DiffVisitor(x, env)
     term.acceptExpr(v)
   }
@@ -562,7 +599,7 @@ object AstOps {
     // 1 * a = a - remove all "1" elements
     val factors1 = mul_f.factors.filterNot(t => t == Num(1))
     if (factors1 == Nil) return Num(1)
-    //TODO: Distribute powers: (a*b*c)**d -> a**d * b**d * c**d
+    //TODO: Distribute powers: (a*b*c)~^d -> a~^d * b~^d * c~^d
 
     //multiply the numbers with each other, keep all other elements unchanged
     val (nums, others) = factors1.partition(t => t.isInstanceOf[Num])
@@ -577,23 +614,23 @@ object AstOps {
 
   /** Simplify Powers */
   def simplify_pow(power: Pow): Expr = {
-    // a**0 = 1
+    // a~^0 = 1
     if (power.exponent.isInstanceOf[Num] && 
         power.exponent.asInstanceOf[Num].num == 0) {
       return Num(1)
     }
-    // a**1 = a
+    // a~^1 = a
     if (power.exponent.isInstanceOf[Num] && 
         power.exponent.asInstanceOf[Num].num == 1) {
       return power.base
     }
-    // 1**a = 1
+    // 1~^a = 1
     if (power.base.isInstanceOf[Num] && 
         power.base.asInstanceOf[Num].num == 1) {
       return Num(1)
     }
     // Power is inverse of logarithm - can't find general case
-    // a ** Log(a, x) = x
+    // a ~^ Log(a, x) = x
     if (power.exponent.isInstanceOf[Log]) {
       val log = power.exponent.asInstanceOf[Log]
       if (power.base == log.base) {
@@ -620,7 +657,7 @@ object AstOps {
     if (logNode.base == logNode.power) {
       return Num(1)
     }
-    //log(b, x**n) = n log(b, x)
+    //log(b, x~^n) = n log(b, x)
     if (logNode.power.isInstanceOf[Pow]) {
       val b = logNode.base
       val x = logNode.power.asInstanceOf[Pow].base
@@ -640,8 +677,9 @@ object AstOps {
 
 /** Test the symbolic maths library */
 object SymbolicMainV {
-  import AstOps._
-  import Expr.toNum
+  import Expression._
+  import ExprOps._
+  import Expr.{int2Num, double2Num}
 
   //Create some symbols for the tests (unknown variables)
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
@@ -653,19 +691,19 @@ object SymbolicMainV {
     assert(a - b == Add(a :: Neg(b) :: Nil))
     assert(a * b == Mul(a :: b :: Nil))
     assert(a / b == Mul(a :: Pow(b, Num(-1)) :: Nil))
-    assert(a ** b == Pow(a, b))
+    assert(a ~^ b == Pow(a, b))
     //Mixed operations work
     assert(a + 2 == Add(a :: Num(2) :: Nil))
     assert(a - 2 == Add(a :: Neg(Num(2)) :: Nil))
     assert(a * 2 == Mul(a :: Num(2) :: Nil))
     assert(a / 2 == Mul(a :: Pow(Num(2), Num(-1)) :: Nil))
-    assert(a ** 2 == Pow(a, Num(2)))
+    assert(a ~^ 2 == Pow(a, Num(2)))
     //Implicit conversions work
     assert(2 + a == Add(Num(2) :: a :: Nil))
     assert(2 - a == Add(Num(2) :: Neg(a) :: Nil))
     assert(2 * a == Mul(Num(2) :: a :: Nil))
     assert(2 / a == Mul(Num(2) :: Pow(a, Num(-1)) :: Nil))
-    assert(2 ** a == Pow(Num(2), a))
+    assert(2 ~^ a == Pow(Num(2), a))
     //Nested Add and Mul are flattened
     assert(a + b + x == Add(a :: b :: x :: Nil))
     assert(a * b * x == Mul(a :: b :: x :: Nil))
@@ -689,11 +727,10 @@ object SymbolicMainV {
     assert(prettyStr((a + b)) == "a + b")
     assert(prettyStr((a - b)) == "a + -b")
     assert(prettyStr((a * b)) == "a * b")
-    assert(prettyStr((a / b)) == "a * b ** -1.0")
-    assert(prettyStr((a ** b)) == "a ** b")
+    assert(prettyStr((a / b)) == "a * b ~^ -1.0")
+    assert(prettyStr((a ~^ b)) == "a ~^ b")
     assert(prettyStr(Log(a, b)) == "log(a, b)")
-    assert(prettyStr(Let("a", 2, a + x)) == 
-           "let a := 2.0 in \na + x")
+    assert(prettyStr(Let("a", 2, a + x)) == "let a := 2.0 in \na + x")
   }
 
 
@@ -736,15 +773,15 @@ object SymbolicMainV {
     assert(simplify_add(a + b) == a + b)
 
     //Test `simplify_pow` -----------------------------------------------
-    // a**0 = 1
-    assert(simplify_pow(a ** 0) == Num(1))
-    // a**1 = a
-    assert(simplify_pow(a ** 1) == a)
-    // 1**a = 1
-    assert(simplify_pow(1 ** a) == Num(1))
-    // a ** log(a, x) = x
-    assert(simplify_pow(a ** Log(a, x)) == x)
-    //2 ** 8 = 256: compute result numerically
+    // a~^0 = 1
+    assert(simplify_pow(a ~^ 0) == Num(1))
+    // a~^1 = a
+    assert(simplify_pow(a ~^ 1) == a)
+    // 1~^a = 1
+    assert(simplify_pow(1 ~^ a) == Num(1))
+    // a ~^ log(a, x) = x
+    assert(simplify_pow(a ~^ Log(a, x)) == x)
+    //2 ~^ 8 = 256: compute result numerically
     assert(simplify_pow(Pow(2, 8)) == Num(256))
 
     //Test `simplify_log` -----------------------------------------------
@@ -752,9 +789,9 @@ object SymbolicMainV {
     assert(simplify_log(Log(a, 1)) == Num(0))
     //log(a, a) = 1
     assert(simplify_log(Log(a, a)) == Num(1))
-    //log(x**n) = n log(x)
-    assert(simplify_log(Log(a, x**b)) == b * Log(a, x))
-    //log(2, 8) = 3 => 2**3 = 8
+    //log(x~^n) = n log(x)
+    assert(simplify_log(Log(a, x~^b)) == b * Log(a, x))
+    //log(2, 8) = 3 => 2~^3 = 8
     assert(simplify_log(Log(2, 8)) == Num(3))
   }
 
@@ -776,18 +813,18 @@ object SymbolicMainV {
     assert(diff(2 * x, x) == Num(2))
     //diff(2 * a * x, x) must be 2 * a
     assert(diff(2 * a * x, x) == 2 * a)
-    //diff(x**2) must be 2*x
-    //pprintln(diff(x**2, x), true)
-    assert(diff(x**2, x) == 2 * x)
-    //x**2 + x + 2 must be 2*x + 1
-//    pprintln(x**2 + x + 2, true)
-//    pprintln(diff(x**2 + x + 2, x), true)
-    assert(diff(x**2 + x + 2, x) == 1 + 2 * x)
-    //diff(x**a, x) = a * x**(a-1) - correct but needs more simplification
-    //pprintln(diff(x**a, x), true)
-    assert(diff(x**a, x) == (x**a) * a * (x**(-1)))
-    //diff(a**x, x) = a**x * ln(a)
-    assert(diff(a**x, x) == a**x * Log(E, a))
+    //diff(x~^2) must be 2*x
+    //pprintln(diff(x~^2, x), true)
+    assert(diff(x~^2, x) == 2 * x)
+    //x~^2 + x + 2 must be 2*x + 1
+//    pprintln(x~^2 + x + 2, true)
+//    pprintln(diff(x~^2 + x + 2, x), true)
+    assert(diff(x~^2 + x + 2, x) == 1 + 2 * x)
+    //diff(x~^a, x) = a * x~^(a-1) - correct but needs more simplification
+    //pprintln(diff(x~^a, x), true)
+    assert(diff(x~^a, x) == (x~^a) * a * (x~^(-1)))
+    //diff(a~^x, x) = a~^x * ln(a)
+    assert(diff(a~^x, x) == a~^x * Log(E, a))
     
     //Test environment with known derivatives: 
     //The values of the variables `a$x`, `b$x` can be arbitrary. The derivation
@@ -796,29 +833,30 @@ object SymbolicMainV {
     //Environment: da/dx = a$x
     //diff(a, x) == a$x
     val (a$x, b$x) = (Sym("a$x"), Sym("b$x"))
-    assert(diff(a, x, Environ("a$x" -> 0)) == a$x)
+    assert(diff(a, x, Env(a$x := 0)) == a$x)
     //Environment: da/dx = a$x, db/dx = b$x
     // diff(a * b, x) == a$x * b + a * b$x
-    val env1 = Environ("a$x"->0, "b$x"->0)
+    val env1 = Env(a$x := 0, b$x := 0)
     assert(diff(a * b, x, env1) == a$x * b + a * b$x)
     
     //Differentiate `Let` node
-    //diff(let a = x**2 in a + x + 2, x) == let da/dx = 2*x in da/dx + 1 == 2*x + 1
-//    pprintln(Let("a", x**2, a + x + 2), true)
-//    pprintln(diff(Let("a", x**2, a + x + 2), x), true)
-    assert(diff(Let("a", x**2, a + x + 2), x) == 
-                Let("a", x**2,
+    //diff(let a = x~^2 in a + x + 2, x) == let da/dx = 2*x in da/dx + 1 == 2*x + 1
+//    pprintln(Let("a", x~^2, a + x + 2), true)
+//    pprintln(diff(Let("a", x~^2, a + x + 2), x), true)
+    assert(diff(Let("a", x~^2, a + x + 2), x) == 
+                Let("a", x~^2,
                 Let("a$x", 2 * x, 1 + a$x))) 
     //same as above with `let` DSL
-    assert(diff(let(a := x**2) in a + x + 2, x) == 
-           (let(a := x**2, a$x := 2 * x) in 1 + a$x))
+    assert(diff(let(a := x~^2) in a + x + 2, x) == 
+           (let(a := x~^2, a$x := 2 * x) in 1 + a$x))
   }
 
 
   /** Test evaluation of expressions */
   def test_eval() = {
     //Environment: x = 5
-    val env = Map("x" -> Num(5))
+    val env = Env(x := 5)
+    assert(env == Map("x" -> Num(5)))
     
     // 2 must be 2
     assert(eval(Num(2), env) == Num(2))
@@ -828,11 +866,11 @@ object SymbolicMainV {
     assert(eval(Neg(x), env) == Num(-5))
     // -a must be -a
     assert(eval(Neg(a), env) == Neg(a))
-    // x**2 must be 25
-    assert(eval(x**2, env) == Num(25))
-    // x**a must be 5**a
+    // x~^2 must be 25
+    assert(eval(x~^2, env) == Num(25))
+    // x~^a must be 5~^a
     //pprintln(eval(Pow(x, a), env), true)
-    assert(eval(x**a, env) == 5**a)
+    assert(eval(x~^a, env) == 5~^a)
     //log(2, 8) must be 3
     assert(eval(Log(2, 8), env) == Num(3))
     // 2 + x + a + 3 must be 10 + a

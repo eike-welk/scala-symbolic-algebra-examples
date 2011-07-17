@@ -81,11 +81,117 @@ object UseTheLibraries {
   
   def useSyMathV() {
     println("\nStart of function `useSyMathV`. -----------------------")
+    
+    import symathv.Expression._
+    import symathv.ExprOps._
+    import Expr.{int2Num, double2Num}
+    
+    //Create some symbols (unknown variables)
+    val (a, b, c, x) = (Sym("a"), Sym("b"), Sym("c"), Sym("x"))
+
+    //Create an expression. `~^` denotes exponentiation (power).
+    val expr1 = 2 * x~^4 + 5 * x~^2 + x~^0.5 
+    //Print the expression.
+    pprintln(expr1)
+    //Differentiate the expression with respect to `x`
+    val dexpr1 = diff(expr1, x) 
+    pprintln(dexpr1)
+    //Evaluate the expression and its differential at x = 3.
+    //The `Env` object creates an environment in which the expression is 
+    //evaluated.
+    val env1 = Env(x := 1)
+    //val env1 = Environment("x" -> 1) //Possible as well
+    pprintln(eval(expr1, env1))
+    pprintln(eval(dexpr1, env1))
+    
+    //The library can also differentiate slightly more complicated powers
+    pprintln(diff(a ~^ x, x))
+    //but the result frequently looks fairly inelegant.
+    pprintln(diff(x ~^ a, x))
+    
+    //There is a ML like `let` expression. It assigns values to variables.
+    //This creates a new environment, where the assigned variables are known.
+    //A single expression (after the keyword `in`) can be put into this new 
+    //environment.
+    //The `let` expression can be evaluated and differentiated.
+    val expr2 = let(a := x ~^ 2, b := 2 * x) in a + b
+    pprintln(eval(expr2)) //Empty environment is default
+    pprintln(eval(expr2, Env(x := 1)))
+    pprintln(diff(expr2, x))
+    
+    //As a byproduct of the `let` mechanism one can express known differentials
+    //symbolically. The symbols that contain a "$" character in their names
+    //are derivatives. "a$x" means: diff(a, x)
+    val (a$x, b$x, c$x) = (Sym("a$x"), Sym("b$x"), Sym("c$x"))
+    val env2 = Env(a$x := 0, b$x := 0, c$x := 0)
+    pprintln(diff(a * b * c, x, env2))
+
+    println()
+    // An expression really is a nested tree of case classes.
+    println(expr1)
+    // `pprintln` has a debug mode to show this real structure of an expression:
+    // If has second argument `debug` with a default value of `false`.
+    // When this argument is set to `true` `pprintln` additionally prints 
+    // the expression as a nested tree of case classes.
+    pprintln(2 * a ~^ 2, debug=true)
   }
   
   
   def useSyMathOo() {
     println("\nStart of function `useSyMathOo`. -----------------------")
+    
+    import symathoo.Expression._
+    import symathoo.ExprOps._
+    import Expr.{int2Num, double2Num}
+    
+    //Create some symbols (unknown variables)
+    val (a, b, c, x) = (Sym("a"), Sym("b"), Sym("c"), Sym("x"))
+
+    //Create an expression. `~^` denotes exponentiation (power).
+    val expr1 = 2 * x~^4 + 5 * x~^2 + x~^0.5 
+    //Print the expression.
+    pprintln(expr1)
+    //Differentiate the expression with respect to `x`
+    val dexpr1 = diff(expr1, x) 
+    pprintln(dexpr1)
+    //Evaluate the expression and its differential at x = 3.
+    //The `Env` object creates an environment in which the expression is 
+    //evaluated.
+    val env1 = Env(x := 1)
+    //val env1 = Environment("x" -> 1) //Possible as well
+    pprintln(eval(expr1, env1))
+    pprintln(eval(dexpr1, env1))
+    
+    //The library can also differentiate slightly more complicated powers
+    pprintln(diff(a ~^ x, x))
+    //but the result frequently looks fairly inelegant.
+    pprintln(diff(x ~^ a, x))
+    
+    //There is a ML like `let` expression. It assigns values to variables.
+    //This creates a new environment, where the assigned variables are known.
+    //A single expression (after the keyword `in`) can be put into this new 
+    //environment.
+    //The `let` expression can be evaluated and differentiated.
+    val expr2 = let(a := x ~^ 2, b := 2 * x) in a + b
+    pprintln(eval(expr2)) //Empty environment is default
+    pprintln(eval(expr2, Env(x := 1)))
+    pprintln(diff(expr2, x))
+    
+    //As a byproduct of the `let` mechanism one can express known differentials
+    //symbolically. The symbols that contain a "$" character in their names
+    //are derivatives. "a$x" means: diff(a, x)
+    val (a$x, b$x, c$x) = (Sym("a$x"), Sym("b$x"), Sym("c$x"))
+    val env2 = Env(a$x := 0, b$x := 0, c$x := 0)
+    pprintln(diff(a * b * c, x, env2))
+
+    println()
+    // An expression really is a nested tree of case classes.
+    println(expr1)
+    // `pprintln` has a debug mode to show this real structure of an expression:
+    // If has second argument `debug` with a default value of `false`.
+    // When this argument is set to `true` `pprintln` additionally prints 
+    // the expression as a nested tree of case classes.
+    pprintln(2 * a ~^ 2, debug=true)
   }
   
   

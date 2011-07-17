@@ -30,6 +30,17 @@ Object oriented with the Visitor pattern.
 Usage
 =====
 
+Getting the Software
+--------------------
+
+Either get the software by cloning the repository with Mercurial::
+
+  hg clone https://bitbucket.org/eike_welk/scala-symbolic-algebra-test
+  
+or download (and extract) one of the auto-generated archives from here:
+
+  https://bitbucket.org/eike_welk/scala-symbolic-algebra-test/downloads
+  
 Without IDE
 -----------
 
@@ -66,11 +77,14 @@ one of Scala's main attractions. Pattern matching is covered here:
 Required Software
 =================
 
-Either a working Scala installation (programs `scalac` and `scala`) on a 
+The revision control program *Mercurial* is necessary to download the software.
+
+Either a working *Scala* installation (programs `scalac` and `scala`) on a 
 Unix-like operating system. (On Windows you have to come up with the right 
 command to compile the sources and run them yourself.)
 
-Or even better a IDE with Scala support, for example the Scala-IDE for Eclipse. 
+Or even better a *IDE with Scala support*, for example the Scala-IDE for 
+Eclipse. 
 
   http://www.scala-ide.org/
 
