@@ -43,7 +43,8 @@ Without IDE
 -----------
 
 Run the script ``make-compile.sh`` to compile all source files. Then run any 
-object with a ``main`` method. For example the usage example ``UseTheLibraries``::
+object with a ``main`` method. Start with the usage example 
+``UseTheLibraries``, which explains all of the library's (few) features::
 
   ./make-compile.sh
   scala -classpath bin/ UseTheLibraries
@@ -51,11 +52,11 @@ object with a ``main`` method. For example the usage example ``UseTheLibraries``
 With IDE
 --------
 
-The Sala IDE for Eclipse at least, finds the source files and compiles them 
+The `Sala IDE for Eclipse` at least, finds the source files and compiles them 
 automatically. You can run any file that contains an object with a ``main`` 
 method by clicking the *Run* button.
 
-First run the usage example ``UseTheLibraries.scala``.
+First try out the usage example ``UseTheLibraries.scala``.
 
 
 Required Knowledge of Scala
@@ -75,8 +76,6 @@ one of Scala's main attractions. Pattern matching is covered here:
 Required Software
 =================
 
-The revision control program *Mercurial* is necessary to download the software.
-
 Either a working *Scala* installation (programs ``scalac`` and ``scala``) on a 
 Unix-like operating system. (On Windows you have to come up with the right 
 command to compile the sources and run them yourself.)
@@ -90,15 +89,16 @@ Eclipse.
 Projects
 ========
 
-To try out the characteristics of the different programming paradigms, you can 
+To compare the characteristics of the different programming paradigms, you can 
 add features to each version of the library. 
 
 * Add derivation of the ``Log`` node.
 * Remove the unnecessary ``Neg`` node. Replace: ``-a`` with: ``(-1) * a``; 
   but look for this pattern in the pretty printer. (Also print ``a * b ** (-1)``
   as ``a / b``, while you are at it.)
-* Add new a node, for example ``sin``, ``cos`` and ``tan``.
-* Add new simplification algorithms. Especially add a separate simplify function.
+* Add new nodes, for example ``sin``, ``cos`` and ``tan``.
+* Add new simplification algorithms. Especially add a separate ``simplify`` 
+  function.
 * Add function call node. Maybe this makes an inert ``diff`` node superfluous.
   (See point below.)
 * Add ``lambda`` (function body) node.
