@@ -1,6 +1,18 @@
 /**
  * Demonstrate how the symbolic math libraries are used.
  * 
+ * The symbolic maths functionality is implemented three times with different 
+ * programming paradigms:
+ * 
+ * Functional, with pattern matching. 
+ *     Package: `symathm` 
+ * 
+ * Classical object oriented. 
+ *     Package: `symathoo`
+ *
+ * Object oriented with the Visitor pattern. 
+ *     Package: `symathv`
+ * 
  * The three functions `useSyMathM`, `useSyMathV`, and `useSyMathOo` 
  * demonstrate the three different implementations of the
  * symbolic math library. As the libraries have the same functionality and 
@@ -22,7 +34,7 @@ object UseTheLibraries {
     //Create an expression. `~^` denotes exponentiation (power).
     val expr1 = 2 * x~^4 + 5 * x~^2 + x~^0.5 
     //Print the expression.
-    pprintln(expr1) 
+    pprintln(expr1)
     //Differentiate the expression with respect to `x`
     val dexpr1 = diff(expr1, x) 
     pprintln(dexpr1)
@@ -49,7 +61,7 @@ object UseTheLibraries {
     pprintln(eval(expr2, Env(x := 1)))
     pprintln(diff(expr2, x))
     
-    //As a byproduct of the let mechanism one can express known differentials
+    //As a byproduct of the `let` mechanism one can express known differentials
     //symbolically. The symbols that contain a "$" character in their names
     //are derivatives. "a$x" means: diff(a, x)
     val (a$x, b$x, c$x) = (Sym("a$x"), Sym("b$x"), Sym("c$x"))
@@ -57,7 +69,12 @@ object UseTheLibraries {
     pprintln(diff(a * b * c, x, env2))
 
     println()
-    // `pprintln` has a debug mode that shows the structure of the expression 
+    // An expression really is a nested tree of case classes.
+    println(expr1)
+    // `pprintln` has a debug mode to show this real structure of an expression:
+    // If has second argument `debug` with a default value of `false`.
+    // When this argument is set to `true` `pprintln` additionally prints 
+    // the expression as a nested tree of case classes.
     pprintln(2 * a ~^ 2, debug=true)
   }
   
