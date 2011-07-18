@@ -208,6 +208,7 @@ object Expression {
  * */
 object ExprOps {
   import Expression._
+  import Expr.{int2Num, double2Num}
   
   /** 
    * Convert the AST to a traditional infix notation for math (String) 
@@ -406,8 +407,6 @@ object ExprOps {
 
   /** Compute the derivative symbolically */
   def diff(term: Expr, x: Sym, env: Environment = Environment()): Expr = {
-    import Expr.{int2Num, double2Num}
-
     term match {
       case Num(_) => Num(0)
       //The "$" character in variable names denotes derivation: a$x = da/dx

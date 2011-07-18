@@ -165,7 +165,10 @@ object Expression {
   /** Numbers */
   case class Num(num: Double) extends Expr {
     /** Convert instance to a pretty printed string. */
-    override def prettyStr() = num.toString()
+    override def prettyStr() = { 
+        if (num == E) "E"
+        else num.toString()
+    }
     /** Returns this object unchanged. */
     override def simplify() = this
     /** Returns this object unchanged. */
