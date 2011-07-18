@@ -23,8 +23,8 @@
 /**
  * Simple Symbolic Algebra in Scala
  * 
- * This implementation uses the **Visitor pattern**,  classes contain 
- * **mostly data** with some trivial functions that call into the visitor.
+ * This implementation uses the '''Visitor pattern''',  classes contain 
+ * '''mostly data''' with some trivial functions that call into the visitor.
  */
 package symathv
 
@@ -38,16 +38,14 @@ import scala.collection.mutable.Stack
 object Expression {
   //The elements of the AST ----------------------------------------------
   /**
-   * Common base class of all AST nodes.
+   * Common base class of all Expression (AST) nodes.
    *
    * Implement binary operations for the elements of the AST.
-   * `Int` and `Double` can be mixed with `Expr` (AST) nodes when using binary 
+   * `Int` and `Double` can be mixed with `Expr` nodes when using binary 
    * operators, because the companion object defines implicit conversions to 
-   * [[symbolic_maths.Num]].
+   * [[symathv.Expression.Num]].
    * 
-   * In the following code snippet `myExpr` is an [[symbolic_maths.Add]]. Note
-   * the parenthesis around `x**2`; the power operators precedence is too low. 
-   * It is equal to the precedence of `*`.
+   * In the following code snippet `myExpr` is an [[symathv.Expression.Add]].
    * {{{
    * val x = Sym("x")
    * val myExpr = 2 * (x**2) + 2 * x + 3
@@ -57,6 +55,7 @@ object Expression {
     //Binary operators
     def +(other: Expr) = ExprOps.flatten_add(Add(this :: other :: Nil))
     def -(other: Expr) = Add(this :: Neg(other) :: Nil)
+    def unary_- = Neg(this)
     def *(other: Expr) = ExprOps.flatten_mul(Mul(this :: other :: Nil))
     def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
     /** Power operator. Can't be `**` or `^`, their precedence is too low. */
@@ -122,9 +121,7 @@ object Expression {
     override def acceptStr(v: StrVisitor) = v.visitLet(this)
     override def acceptExpr(v: ExprVisitor) = v.visitLet(this)
   }
-  /** Assignment: `x := a + b `
-   * Only needed by `let` convenience object which creates `Let` nodes with nicer 
-   * syntax. */ 
+  /** Assignment: `x := a + b`. Used by `let` and `Env` convenience objects. */ 
   case class Asg(lhs: Expr, rhs: Expr) extends Expr {
     override def acceptStr(v: StrVisitor) = {throw new Exception("Not implemented!")}
     override def acceptExpr(v: ExprVisitor) = {throw new Exception("Not implemented!")}
@@ -684,11 +681,12 @@ object SymbolicMainV {
   //Create some symbols for the tests (unknown variables)
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
   
-  /** Test binary operators */
+  /** Test operators and `let` DSL */
   def test_operators() = {
     //The basic operations are implemented
     assert(a + b == Add(a :: b :: Nil))
     assert(a - b == Add(a :: Neg(b) :: Nil))
+    assert(-a == Neg(a)) 
     assert(a * b == Mul(a :: b :: Nil))
     assert(a / b == Mul(a :: Pow(b, Num(-1)) :: Nil))
     assert(a ~^ b == Pow(a, b))
@@ -738,16 +736,16 @@ object SymbolicMainV {
   def test_simplify() = {
     //Test `simplify_neg` -----------------------------------------------
     // -(2) = -2
-    assert(simplify_neg(Neg(Num(2))) == Num(-2))
+    assert(simplify_neg(-Num(2)) == Num(-2))
     // --a = a
-    assert(simplify_neg(Neg(Neg(a))) == a)
+    assert(simplify_neg(-(-a)) == a)
     // ----a = a
     //pprintln(simplify_neg(Neg(Neg(Neg(Neg(a))))), true)
-    assert(simplify_neg(Neg(Neg(Neg(Neg(a))))) == a)
+    assert(simplify_neg(-(-(-(-a)))) == a)
     // ---a = -a
-    assert(simplify_neg(Neg(Neg(Neg(a)))) == Neg(a))
+    assert(simplify_neg(-(-(-a))) == Neg(a))
     // -a = -a
-    assert(simplify_neg(Neg(a)) == Neg(a))
+    assert(simplify_neg(-a) == Neg(a))
 
     //Test `simplify_mul` -----------------------------------------------
     // 0*a = 0
