@@ -59,11 +59,13 @@ object Expression {
    * }}}
    */
   abstract class Expr {
+    import ExprOps._
+    
     //Binary operators
-    def +(other: Expr) = ExprOps.flatten_add(Add(this :: other :: Nil))
-    def -(other: Expr) = Add(this :: Neg(other) :: Nil)
-    def unary_- = Neg(this)
-    def *(other: Expr) = ExprOps.flatten_mul(Mul(this :: other :: Nil))
+    def +(other: Expr) = flatten_add(Add(this :: other :: Nil))
+    def -(other: Expr) = Add(this :: other.unary_- :: Nil)
+    def unary_-        = Mul(Num(-1) :: this :: Nil)
+    def *(other: Expr) = flatten_mul(Mul(this :: other :: Nil))
     def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
     /** Power operator. Can't be `**` or `^`, their precedence is too low. */
     def ~^(other: Expr) = Pow(this, other)
@@ -81,8 +83,6 @@ object Expression {
   case class Num(num: Double) extends Expr
   /** Symbols (references to variables) */
   case class Sym(name: String) extends Expr
-  /** Unary minus (-x) */
-  case class Neg(term: Expr) extends Expr
   /** N-ary addition (+ a b c d). Subtraction is emulated with the unary minus operator */
   case class Add(summands: List[Expr]) extends Expr
   /** N-ary multiplication (* a b c d); division is emulated with power */
@@ -216,7 +216,8 @@ object ExprOps {
    * For printing see: [[pprintln]] */
   def prettyStr(term: Expr): String = {
     //TODO: insert braces in the right places
-    //TODO: convert a * b~^-1 to a / b
+    //TODO: convert `a * b~^-1` to "a / b"
+    //TODO: convert `(-1) * a`  to "-a"
     
     //Convert elements of `terms` to strings,
     //and place string `sep` between them
@@ -230,7 +231,6 @@ object ExprOps {
         if (num == E) "E"
         else num.toString()
       case Sym(name)      => name
-      case Neg(term)      => "-" + prettyStr(term)
       case Add(term_lst)  => convert_join(" + ", term_lst)
       case Mul(term_lst)  => convert_join(" * ", term_lst)
       case Pow(base, exp) => prettyStr(base) + " ~^ " + prettyStr(exp)
@@ -270,7 +270,6 @@ object ExprOps {
   def eval(term: Expr, env: Environment = Environment()): Expr = {
     term match {
       case Sym(name)       => env.getOrElse(name, term)
-      case Neg(term)       => simplify_neg(Neg(eval(term, env)))
       case Add(terms)      => simplify_add(Add(terms.map(t => eval(t, env))))
       case Mul(terms)      => simplify_mul(Mul(terms.map(t => eval(t, env))))
       case Pow(base, expo) =>
@@ -317,17 +316,6 @@ object ExprOps {
     Mul(factors_new.toList)
   }
 
-  /** Simplify minus sign (Neg) */
-  def simplify_neg(expr: Neg): Expr = {
-    expr match {
-      case Neg(Num(num))         => Num(-num)
-      //--a = a
-      case Neg(Neg(neg_rec:Neg)) => simplify_neg(neg_rec)
-      case Neg(Neg(term))        => term
-      case _                     => expr
-    }
-  }
-
   /** Simplify a n-ary addition */
   def simplify_add(expr: Add): Expr = {
     //flatten nested Add
@@ -356,19 +344,20 @@ object ExprOps {
 
     // 0 * a = 0
     if (mul_f.factors.contains(Num(0))) return Num(0)
-    // 1 * a = a - remove all "1" elements
-    val factors1 = mul_f.factors.filterNot(t => t == Num(1))
-    if (factors1 == Nil) return Num(1)
     //TODO: Distribute powers: (a*b*c)~^d -> a~^d * b~^d * c~^d
 
     //multiply the numbers with each other, keep all other elements unchanged
-    val (nums, others) = factors1.partition(t => t.isInstanceOf[Num])
+    val (nums, others) = mul_f.factors.partition(t => t.isInstanceOf[Num])
     val prod = nums.map(x => x.asInstanceOf[Num].num)
-                   .reduceOption((x, y) => x * y).map(Num).toList
+                   .reduceOption((x, y) => x * y)
+                   .filterNot(t => t == 1) //if result is `1` remove it
+                   .map(Num).toList
     val factors_p = prod ::: others
 
+    //The only remaining factor was a `1` which was filtered out. 
+    if (factors_p.length == 0) return Num(1)
     //Remove Muls with only one argument:  (* 23) -> 23
-    if (factors_p.length == 1) factors_p(0)
+    else if (factors_p.length == 1) factors_p(0)
     else Mul(factors_p)
   }
 
@@ -417,7 +406,6 @@ object ExprOps {
         else if (env.contains(dName)) Sym(dName)
         else                          Num(0)
       }
-      case Neg(term)     => simplify_neg(Neg(diff(term, x, env)))
       case Add(summands) => simplify_add(Add(summands.map(t => diff(t, x, env))))
       //D(u*v*w) = Du*v*w + u*Dv*w + u*v*Dw
       case Mul(factors) =>
@@ -470,20 +458,20 @@ object SymbolicMainM {
   def test_operators() = {
     //The basic operations are implemented
     assert(a + b == Add(a :: b :: Nil))
-    assert(a - b == Add(a :: Neg(b) :: Nil))
-    assert(-a == Neg(a)) 
+    assert(a - b == Add(a :: Mul(Num(-1) :: b :: Nil) :: Nil))
+    assert(-a == Mul(Num(-1) :: a :: Nil)) 
     assert(a * b == Mul(a :: b :: Nil))
     assert(a / b == Mul(a :: Pow(b, Num(-1)) :: Nil))
     assert(a ~^ b == Pow(a, b))
     //Mixed operations work
     assert(a + 2 == Add(a :: Num(2) :: Nil))
-    assert(a - 2 == Add(a :: Neg(Num(2)) :: Nil))
+    assert(a - 2 == Add(a :: (Num(-1) * Num(2)) :: Nil))
     assert(a * 2 == Mul(a :: Num(2) :: Nil))
     assert(a / 2 == Mul(a :: Pow(Num(2), Num(-1)) :: Nil))
     assert(a ~^ 2 == Pow(a, Num(2)))
     //Implicit conversions work
     assert(2 + a == Add(Num(2) :: a :: Nil))
-    assert(2 - a == Add(Num(2) :: Neg(a) :: Nil))
+    assert(2 - a == Add(Num(2) :: (Num(-1) * a) :: Nil))
     assert(2 * a == Mul(Num(2) :: a :: Nil))
     assert(2 / a == Mul(Num(2) :: Pow(a, Num(-1)) :: Nil))
     assert(2 ~^ a == Pow(Num(2), a))
@@ -491,7 +479,7 @@ object SymbolicMainM {
     assert(a + b + x == Add(a :: b :: x :: Nil))
     assert(a * b * x == Mul(a :: b :: x :: Nil))
     //mixed + and - work propperly
-    assert(a - b + x == Add(a :: Neg(b) :: x :: Nil))
+    assert(a - b + x == Add(a :: (Num(-1) * b) :: x :: Nil))
     //mixed * and / work propperly
     assert(a / b * x == Mul(a :: Pow(b, Num(-1)) :: x :: Nil))
     //create `Let` nodes
@@ -504,9 +492,9 @@ object SymbolicMainM {
   def test_prettyStr() {
     assert(prettyStr(Num(23)) == "23.0")
     assert(prettyStr(a) == "a")
-    assert(prettyStr(Neg(2)) == "-2.0")
     assert(prettyStr((a + b)) == "a + b")
-    assert(prettyStr((a - b)) == "a + -b")
+    pprintln(a - b)
+//    assert(prettyStr((a - b)) == "a + -b")
     assert(prettyStr((a * b)) == "a * b")
     assert(prettyStr((a / b)) == "a * b ~^ -1.0")
     assert(prettyStr((a ~^ b)) == "a ~^ b")
@@ -517,18 +505,17 @@ object SymbolicMainM {
 
   /** test simplification functions */
   def test_simplify() = {
-    //Test `simplify_neg` -----------------------------------------------
+    //Test `simplify_mul`: correct treatment of `-term` as ((-1) * term)  -----
     // -(2) = -2
-    assert(simplify_neg(-Num(2)) == Num(-2))
+    assert(simplify_mul(-Num(2)) == Num(-2))
     // --a = a
-    assert(simplify_neg(-(-a)) == a)
+    assert(simplify_mul(-(-a)) == a)
     // ----a = a
-    //pprintln(simplify_neg(Neg(Neg(Neg(Neg(a))))), true)
-    assert(simplify_neg(-(-(-(-a)))) == a)
+    assert(simplify_mul(-(-(-(-a)))) == a)
     // ---a = -a
-    assert(simplify_neg(-(-(-a))) == Neg(a))
+    assert(simplify_mul(-(-(-a))) == -a)
     // -a = -a
-    assert(simplify_neg(-a) == Neg(a))
+    assert(simplify_mul(-a) == -a)
 
     //Test `simplify_mul` -----------------------------------------------
     // 0*a = 0
@@ -587,7 +574,7 @@ object SymbolicMainM {
     assert(diff(x, x) == Num(1))
     //diff(-x, x) must be -1
     //pprintln(diff(Neg(x), x), true)
-    assert(diff(Neg(x), x) == Num(-1))
+    assert(diff(-x, x) == Num(-1))
     //diff(2 + a + x, x) must be 1
     assert(diff(2 + a + x, x) == Num(1))
     //diff(2 * x, x) must be 2
@@ -644,9 +631,9 @@ object SymbolicMainM {
     // x must be 5
     assert(eval(x, env) == Num(5))
     // -x must be -5
-    assert(eval(Neg(x), env) == Num(-5))
+    assert(eval(-x, env) == Num(-5))
     // -a must be -a
-    assert(eval(Neg(a), env) == Neg(a))
+    assert(eval(-a, env) == -a)
     // x~^2 must be 25
     assert(eval(x~^2, env) == Num(25))
     // x~^a must be 5~^a
