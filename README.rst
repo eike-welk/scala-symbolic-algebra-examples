@@ -93,9 +93,6 @@ To compare the characteristics of the different programming paradigms, you can
 add features to each version of the library. 
 
 * Add derivation of the ``Log`` node.
-* Remove the unnecessary ``Neg`` node. Replace: ``-a`` with: ``(-1) * a``; 
-  but look for this pattern in the pretty printer. (Also print ``a * b ** (-1)``
-  as ``a / b``, while you are at it.)
 * Add new nodes, for example ``sin``, ``cos`` and ``tan``.
 * Add new simplification algorithms. Especially add a separate ``simplify`` 
   function.

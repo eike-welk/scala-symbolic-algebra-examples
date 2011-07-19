@@ -211,35 +211,73 @@ object ExprOps {
   import Expr.{int2Num, double2Num}
   
   /** 
-   * Convert the AST to a traditional infix notation for math (String) 
+   * Convert the AST to a string in normal infix notation for math.
    * 
-   * For printing see: [[pprintln]] */
-  def prettyStr(term: Expr): String = {
-    //TODO: insert braces in the right places
-    //TODO: convert `a * b~^-1` to "a / b"
-    //TODO: convert `(-1) * a`  to "-a"
-    
-    //Convert elements of `terms` to strings,
-    //and place string `sep` between them
-    def convert_join(sep: String, terms: List[Expr]) = {
-      val str_lst = terms.map(prettyStr)
-      str_lst.reduce((s1, s2) => s1 + sep + s2)
+   * @param term      The node that is converted to a string
+   * @param outerNode The surrounding node. If this node is a binary operator
+   *                  with higher precedence than term, then a pair of 
+   *                  parentheses is put around term's string representation.
+   * For printing see: [[symathm.ExprOps.pprintln]] */
+  def prettyStr(term: Expr, 
+                outerNode: Expr = Let("", 0, 0) //`Let` has lowest precedence
+                ): String = {
+    //The precedence of each node, for putting parentheses around the string 
+    //representation if necessary.
+    def precedence(e: Expr) = e match {
+      case Asg(_, _) => 1
+      case Add(_)    => 2
+      case Mul(_)    => 3
+      case Pow(_, _) => 4
+      case _         => -1   //No parentheses necessary
     }
-
-    term match {
+    
+    val sRaw = term match {
       case Num(num) => 
         if (num == E) "E"
         else num.toString()
-      case Sym(name)      => name
-      case Add(term_lst)  => convert_join(" + ", term_lst)
-      case Mul(term_lst)  => convert_join(" * ", term_lst)
-      case Pow(base, exp) => prettyStr(base) + " ~^ " + prettyStr(exp)
-      case Log(base, pow) => "log(" + prettyStr(base) + ", " + prettyStr(pow) + ")"
+      case Sym(name) => name
+      case Add(termLst) => {
+        var sRaw = ""
+        for (t <- termLst) {
+          t match {
+            case Mul(Num(-1) :: fact :: Nil) => sRaw += " - " + prettyStr(fact, term)
+            case summand                     => sRaw += " + " + prettyStr(summand, term)
+          }
+        }
+        if      (sRaw.startsWith(" + ")) sRaw.substring(3)
+        else if (sRaw.startsWith(" - ")) "-" + sRaw.substring(3)
+        else throw new Exception("Internal Error!") 
+      }
+      //convert single "-a"
+      case Mul(Num(-1) :: fact :: Nil) => "-" + prettyStr(fact, term)
+      case Mul(termLst)  => {
+        var sRaw = ""
+        for (t <- termLst) {
+          t match {
+            case Pow(base, Num(-1)) => sRaw += " / " + prettyStr(base, term)
+            case fact               => sRaw += " * " + prettyStr(fact, term)
+          }
+        }
+        if      (sRaw.startsWith(" * ")) sRaw.substring(3)
+        else if (sRaw.startsWith(" / ")) "1 / " + sRaw.substring(3)
+        else throw new Exception("Internal Error!") 
+      }
+      case Pow(base, exp) => 
+        prettyStr(base, term) + " ~^ " + prettyStr(exp, term)
+      case Log(base, pow) => 
+        "log(" + prettyStr(base, term) + ", " + prettyStr(pow, term) + ")"
       case Let(name, value, in) => 
-        "let " + name + " := " + prettyStr(value) + " in \n" + prettyStr(in)
+        "let " + name + " := " + prettyStr(value, term) + " in \n" + 
+        prettyStr(in, term)
       case _ => throw new IllegalArgumentException(
-                  "Unknown expression: '%s'.".format(term))
+                            "Unknown expression: '%s'.".format(term))
     }
+    
+    //Put parentheses around the term if necessary
+    val (precTerm, precOuter) = (precedence(term), precedence(outerNode))
+    if (precTerm == -1 || precOuter == -1)  sRaw
+    else if (precTerm < precOuter)          "(" + sRaw + ")"
+    else                                    sRaw
   }
   
   /** Print AST in human readable form. */
@@ -492,14 +530,18 @@ object SymbolicMainM {
   def test_prettyStr() {
     assert(prettyStr(Num(23)) == "23.0")
     assert(prettyStr(a) == "a")
-    assert(prettyStr((a + b)) == "a + b")
-    pprintln(a - b)
-//    assert(prettyStr((a - b)) == "a + -b")
-    assert(prettyStr((a * b)) == "a * b")
-    assert(prettyStr((a / b)) == "a * b ~^ -1.0")
-    assert(prettyStr((a ~^ b)) == "a ~^ b")
+    assert(prettyStr(a + b) == "a + b")
+    assert(prettyStr(a - b) == "a - b")
+    assert(prettyStr(-a + b) == "-a + b")
+    assert(prettyStr(-a) == "-a")
+    assert(prettyStr(a * b) == "a * b")
+    assert(prettyStr(a / b) == "a / b")
+    assert(prettyStr(a ~^ -1 * b) == "1 / a * b")
+    assert(prettyStr(a ~^ b) == "a ~^ b")
     assert(prettyStr(Log(a, b)) == "log(a, b)")
     assert(prettyStr(Let("a", 2, a + x)) == "let a := 2.0 in \na + x")
+    assert(prettyStr(a * (b + x)) == "a * (b + x)")
+    assert(prettyStr(a ~^ (b + x)) == "a ~^ (b + x)") 
   }
 
 
