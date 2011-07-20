@@ -55,10 +55,10 @@ object Expression {
     import ExprOps._
     
     //Binary operators
-    def +(other: Expr) = flatten_add(Add(this :: other :: Nil))
+    def +(other: Expr) = flattenAdd(Add(this :: other :: Nil))
     def -(other: Expr) = Add(this :: other.unary_- :: Nil)
     def unary_-        = Mul(Num(-1) :: this :: Nil)
-    def *(other: Expr) = flatten_mul(Mul(this :: other :: Nil))
+    def *(other: Expr) = flattenMul(Mul(this :: other :: Nil))
     def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
     /** Power operator. Can't be `**` or `^`, their precedence is too low. */
     def ~^(other: Expr) = Pow(this, other)
@@ -112,7 +112,7 @@ object Expression {
    * ML style binding operator
    * 
    * Add one binding (name = value) to the environment and evaluate expression
-   * `expr_next` in the new environment.
+   * `exprNext` in the new environment.
    */
   case class Let(name: String, value: Expr, exprNext: Expr) extends Expr {
     override def acceptStr(v: StrVisitor) = v.visitLet(this)
@@ -406,17 +406,17 @@ class EvalVisitor(inEnvironment: Expression.Environment) extends ExprVisitor {
   
   def visitNum(num: Num) = num
   def visitSym(sym: Sym) = env.getOrElse(sym.name, sym)
-  def visitAdd(add: Add) = simplify_add(Add(add.summands.map(t => t.acceptExpr(this))))
-  def visitMul(mul: Mul) = simplify_mul(Mul(mul.factors.map(t => t.acceptExpr(this))))
+  def visitAdd(add: Add) = simplifyAdd(Add(add.summands.map(t => t.acceptExpr(this))))
+  def visitMul(mul: Mul) = simplifyMul(Mul(mul.factors.map(t => t.acceptExpr(this))))
   def visitPow(pow: Pow) = 
-    simplify_pow(Pow(pow.base.acceptExpr(this), pow.exponent.acceptExpr(this)))
+    simplifyPow(Pow(pow.base.acceptExpr(this), pow.exponent.acceptExpr(this)))
   def visitLog(log: Log) = 
-    simplify_log(Log(log.base.acceptExpr(this), log.power.acceptExpr(this)))
+    simplifyLog(Log(log.base.acceptExpr(this), log.power.acceptExpr(this)))
   def visitLet(let: Let) = {
     //Add one binding to the environment,
     //and evaluate the next expression in the new environment
-    val env_new = env.updated(let.name, let.value.acceptExpr(this))
-    envStack.push(env_new)
+    val envNew = env.updated(let.name, let.value.acceptExpr(this))
+    envStack.push(envNew)
     val resultNext = let.exprNext.acceptExpr(this)
     envStack.pop()
     resultNext
@@ -465,24 +465,24 @@ class DiffVisitor(x: Expression.Sym, env: Expression.Environment)
   }
   
   def visitAdd(add: Add): Expr = 
-    simplify_add(Add(add.summands.map(t => diff(t, x, env))))
+    simplifyAdd(Add(add.summands.map(t => diff(t, x, env))))
   
   //D(u*v*w) = Du*v*w + u*Dv*w + u*v*Dw
   def visitMul(mul: Mul): Expr = {
     val summands = new ListBuffer[Expr]
     for (i <- 0 until mul.factors.length) {
-      val facts_new = ListBuffer.concat(mul.factors)
-      facts_new(i) = diff(facts_new(i), x, env)
-      summands += simplify_mul(Mul(facts_new.toList))   
+      val factsNew = ListBuffer.concat(mul.factors)
+      factsNew(i) = diff(factsNew(i), x, env)
+      summands += simplifyMul(Mul(factsNew.toList))   
     }
-    simplify_add(Add(summands.toList))
+    simplifyAdd(Add(summands.toList))
   }
   
   def visitPow(pow: Pow): Expr = {
     // Simple case: diff(x**n, x) = n * x**(n-1)
     if (pow.base == x && pow.exponent.isInstanceOf[Num]) {
       val expo = pow.exponent.asInstanceOf[Num]
-      pow.exponent * simplify_pow(pow.base ~^ (Num(expo.num-1)))
+      pow.exponent * simplifyPow(pow.base ~^ (Num(expo.num-1)))
     }
     //General case (from Maple):
     //      diff(u(x)~^v(x), x) =
@@ -509,7 +509,7 @@ class DiffVisitor(x: Expression.Sym, env: Expression.Environment)
     //create the two intertwined let expressions
     val innerLet = Let(valueDName, valueD, nextExprD)
     Let(name, value, innerLet)
-    //TODO: simplify_let: remove unused variables.
+    //TODO: simplify let: remove unused variables.
   }
 }
 
@@ -593,84 +593,83 @@ object ExprOps {
    * Convert nested additions to flat n-ary additions:
    * `(+ a (+ b c)) => (+ a b c)`
    */
-  def flatten_add(expr: Add): Add = {
-    val summands_new = new ListBuffer[Expr]
+  def flattenAdd(expr: Add): Add = {
+    val summandsNew = new ListBuffer[Expr]
     for (s <- expr.summands) {
       if (s.isInstanceOf[Add]) {
         val a = s.asInstanceOf[Add]
-        summands_new ++= flatten_add(a).summands
+        summandsNew ++= flattenAdd(a).summands
       }
       else {
-        summands_new += s
+        summandsNew += s
       }
     }
-    Add(summands_new.toList)
+    Add(summandsNew.toList)
   }
 
   /**
    * Convert nested multiplications to flat n-ary multiplications:
    * `(* a (* b c)) => (* a b c)`
    */
-  def flatten_mul(expr: Mul): Mul = {
-    val factors_new = new ListBuffer[Expr]
+  def flattenMul(expr: Mul): Mul = {
+    val factorsNew = new ListBuffer[Expr]
     for (s <- expr.factors) {
       if (s.isInstanceOf[Mul]) {
         val m = s.asInstanceOf[Mul]
-        factors_new ++= flatten_mul(m).factors
+        factorsNew ++= flattenMul(m).factors
       }
       else {
-        factors_new += s
+        factorsNew += s
       }
     }
-    Mul(factors_new.toList)
+    Mul(factorsNew.toList)
   }
 
   /** Simplify a n-ary addition */
-  def simplify_add(expr: Add): Expr = {
+  def simplifyAdd(expr: Add): Expr = {
     //flatten nested Add
-    val add_f = flatten_add(expr)
+    val addF = flattenAdd(expr)
 
     //sum the numbers up, keep all other elements unchanged
-    val (nums, others) = add_f.summands.partition(t => t.isInstanceOf[Num])
+    val (nums, others) = addF.summands.partition(t => t.isInstanceOf[Num])
     val sum = nums.map(x => x.asInstanceOf[Num].num)
                   .reduceOption((x, y) => x + y)
                   .filterNot(t => t == 0) //if result is `0` remove it
                   .map(Num).toList
-    val summands_s = sum ::: others
+    val sumsNew = sum ::: others
 
     //The only remaining summand was a `0` which was filtered out. 
-    if (summands_s.length == 0) return Num(0)
+    if (sumsNew.length == 0) return Num(0)
     //Remove Adds with only one argument:  (+ 23) -> 23
-    else if (summands_s.length == 1) summands_s(0)
-    else Add(summands_s)
+    else if (sumsNew.length == 1) sumsNew(0)
+    else Add(sumsNew)
   }
 
   /** Simplify a n-ary multiplication */
-  def simplify_mul(expr: Mul): Expr = {
+  def simplifyMul(expr: Mul): Expr = {
     //flatten nested Mul
-    val mul_f = flatten_mul(expr)
+    val mulF = flattenMul(expr)
 
     // 0 * a = 0
-    if (mul_f.factors.contains(Num(0))) return Num(0)
-    //TODO: Distribute powers: (a*b*c)~^d -> a~^d * b~^d * c~^d
+    if (mulF.factors.contains(Num(0))) return Num(0)
 
     //multiply the numbers with each other, keep all other elements unchanged
-    val (nums, others) = mul_f.factors.partition(t => t.isInstanceOf[Num])
+    val (nums, others) = mulF.factors.partition(t => t.isInstanceOf[Num])
     val prod = nums.map(x => x.asInstanceOf[Num].num)
                    .reduceOption((x, y) => x * y)
                    .filterNot(t => t == 1) //if result is `1` remove it
                    .map(Num).toList
-    val factors_p = prod ::: others
+    val factsNew = prod ::: others
 
     //The only remaining factor was a `1` which was filtered out. 
-    if (factors_p.length == 0) return Num(1)
+    if (factsNew.length == 0) return Num(1)
     //Remove Muls with only one argument:  (* 23) -> 23
-    else if (factors_p.length == 1) factors_p(0)
-    else Mul(factors_p)
+    else if (factsNew.length == 1) factsNew(0)
+    else Mul(factsNew)
   }
 
   /** Simplify Powers */
-  def simplify_pow(power: Pow): Expr = {
+  def simplifyPow(power: Pow): Expr = {
     // a~^0 = 1
     if (power.exponent.isInstanceOf[Num] && 
         power.exponent.asInstanceOf[Num].num == 0) {
@@ -705,7 +704,7 @@ object ExprOps {
   }
 
   /** Simplify Logarithms */
-  def simplify_log(logNode: Log): Expr = {
+  def simplifyLog(logNode: Log): Expr = {
     //log(a, 1) = 0
     if (logNode.power == Num(1)) {
       return Num(0)
@@ -742,7 +741,7 @@ object SymbolicMainV {
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
   
   /** Test operators and `let` DSL */
-  def test_operators() = {
+  def testOperators() = {
     //The basic operations are implemented
     assert(a + b == Add(a :: b :: Nil))
     assert(a - b == Add(a :: Mul(Num(-1) :: b :: Nil) :: Nil))
@@ -776,7 +775,7 @@ object SymbolicMainV {
 
 
   /** Test pretty printing */
-  def test_prettyStr() {
+  def testPrettyStr() {
     assert(prettyStr(Num(23)) == "23.0")
     assert(prettyStr(-Num(2)) == "-2.0")
     assert(prettyStr(a) == "a")
@@ -799,69 +798,69 @@ object SymbolicMainV {
 
 
   /** test simplification functions */
-  def test_simplify() = {
-    //Test `simplify_mul`: correct treatment of `-term` as ((-1) * term)  -----
+  def testSimplify() = {
+    //Test `simplifyMul`: correct treatment of `-term` as ((-1) * term)  -----
     // -(2) = -2
-    assert(simplify_mul(-Num(2)) == Num(-2))
+    assert(simplifyMul(-Num(2)) == Num(-2))
     // --a = a
-    assert(simplify_mul(-(-a)) == a)
+    assert(simplifyMul(-(-a)) == a)
     // ----a = a
-    assert(simplify_mul(-(-(-(-a)))) == a)
+    assert(simplifyMul(-(-(-(-a)))) == a)
     // ---a = -a
-    assert(simplify_mul(-(-(-a))) == -a)
+    assert(simplifyMul(-(-(-a))) == -a)
     // -a = -a
-    assert(simplify_mul(-a) == -a)
+    assert(simplifyMul(-a) == -a)
 
-    //Test `simplify_mul` -----------------------------------------------
+    //Test `simplifyMul` -----------------------------------------------
     // 0*a = 0
-    assert(simplify_mul(0 * a) == Num(0))
+    assert(simplifyMul(0 * a) == Num(0))
     // 1*1*1 = 1
-    assert(simplify_mul(Num(1) * 1 * 1) == Num(1))
+    assert(simplifyMul(Num(1) * 1 * 1) == Num(1))
     // 1*a = a
-    assert(simplify_mul(1 * a) == a)
+    assert(simplifyMul(1 * a) == a)
     // 1 * 2 * 3 = 6
-    assert(simplify_mul(Num(1) * 2 * 3) == Num(6))
+    assert(simplifyMul(Num(1) * 2 * 3) == Num(6))
     // a * b = a * b
-    assert(simplify_mul(a * b) == a * b)
+    assert(simplifyMul(a * b) == a * b)
 
-    //Test `simplify_add` -----------------------------------------------
+    //Test `simplifyAdd` -----------------------------------------------
     // 0+0+0 = 0
-    assert(simplify_add(Num(0) + 0 + 0) == Num(0))
+    assert(simplifyAdd(Num(0) + 0 + 0) == Num(0))
     // 0+a = 0
-    assert(simplify_add(0 + a) == a)
+    assert(simplifyAdd(0 + a) == a)
     // a + (-3) + 3 = a
-    assert(simplify_add(a + Num(-3) + 3) == a)
+    assert(simplifyAdd(a + Num(-3) + 3) == a)
     // 0 + 1 + 2 + 3 = 6
-    assert(simplify_add(Num(0) + 1 + 2 + 3) == Num(6))
+    assert(simplifyAdd(Num(0) + 1 + 2 + 3) == Num(6))
     // a + b = a + b
-    assert(simplify_add(a + b) == a + b)
+    assert(simplifyAdd(a + b) == a + b)
 
-    //Test `simplify_pow` -----------------------------------------------
+    //Test `simplifyPow` -----------------------------------------------
     // a~^0 = 1
-    assert(simplify_pow(a ~^ 0) == Num(1))
+    assert(simplifyPow(a ~^ 0) == Num(1))
     // a~^1 = a
-    assert(simplify_pow(a ~^ 1) == a)
+    assert(simplifyPow(a ~^ 1) == a)
     // 1~^a = 1
-    assert(simplify_pow(1 ~^ a) == Num(1))
+    assert(simplifyPow(1 ~^ a) == Num(1))
     // a ~^ log(a, x) = x
-    assert(simplify_pow(a ~^ Log(a, x)) == x)
+    assert(simplifyPow(a ~^ Log(a, x)) == x)
     //2 ~^ 8 = 256: compute result numerically
-    assert(simplify_pow(Pow(2, 8)) == Num(256))
+    assert(simplifyPow(Pow(2, 8)) == Num(256))
 
-    //Test `simplify_log` -----------------------------------------------
+    //Test `simplifyLog` -----------------------------------------------
     //log(a, 1) = 0
-    assert(simplify_log(Log(a, 1)) == Num(0))
+    assert(simplifyLog(Log(a, 1)) == Num(0))
     //log(a, a) = 1
-    assert(simplify_log(Log(a, a)) == Num(1))
+    assert(simplifyLog(Log(a, a)) == Num(1))
     //log(x~^n) = n log(x)
-    assert(simplify_log(Log(a, x~^b)) == b * Log(a, x))
+    assert(simplifyLog(Log(a, x~^b)) == b * Log(a, x))
     //log(2, 8) = 3 => 2~^3 = 8
-    assert(simplify_log(Log(2, 8)) == Num(3))
+    assert(simplifyLog(Log(2, 8)) == Num(3))
   }
 
 
   /** Test differentiation */
-  def test_diff() = {
+  def testDiff() = {
     //diff(2, x) must be 0
     assert(diff(Num(2), x) == Num(0))
     //diff(a, x)  must be 0
@@ -917,7 +916,7 @@ object SymbolicMainV {
 
 
   /** Test evaluation of expressions */
-  def test_eval() = {
+  def testEval() = {
     //Environment: x = 5
     val env = Env(x := 5)
     assert(env == Map("x" -> Num(5)))
@@ -958,11 +957,11 @@ object SymbolicMainV {
 
   /** Run the test application. */
   def main(args : Array[String]) : Unit = {
-    test_operators()
-    test_prettyStr()
-    test_simplify()
-    test_diff()
-    test_eval()
+    testOperators()
+    testPrettyStr()
+    testSimplify()
+    testDiff()
+    testEval()
 
     println("Tests finished successfully. (V)")
   }

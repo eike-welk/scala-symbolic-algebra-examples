@@ -228,14 +228,14 @@ object Expression {
      * `(+ a (+ b c)) => (+ a b c)`
      */
     def flatten(): Add = {
-      val summands_new = new ListBuffer[Expr]
+      val summandsNew = new ListBuffer[Expr]
       for (s <- this.summands) {
         s match {
-          case a: Add => summands_new ++= a.flatten().summands
-          case _      => summands_new += s
+          case a: Add => summandsNew ++= a.flatten().summands
+          case _      => summandsNew += s
         }
       }
-      Add(summands_new.toList)
+      Add(summandsNew.toList)
     }
     
     /** Convert instance to a pretty printed string. */
@@ -257,21 +257,21 @@ object Expression {
     /** Simplify a n-ary addition */
     override def simplify(): Expr = {
       //flatten nested Add
-      val add_f = this.flatten()
+      val addF = this.flatten()
 
       //sum the numbers up, keep all other elements unchanged
-      val (nums, others) = add_f.summands.partition(t => t.isInstanceOf[Num])
+      val (nums, others) = addF.summands.partition(t => t.isInstanceOf[Num])
       val sum = nums.map(x => x.asInstanceOf[Num].num)
                     .reduceOption((x, y) => x + y)
                     .filterNot(t => t == 0) //if result is `0` remove it
                     .map(Num).toList
-      val summands_s = sum ::: others
+      val sumsNew = sum ::: others
   
       //The only remaining summand was a `0` which was filtered out. 
-      if (summands_s.length == 0) return Num(0)
+      if (sumsNew.length == 0) return Num(0)
       //Remove Adds with only one argument:  (+ 23) -> 23
-      else if (summands_s.length == 1) summands_s(0)
-      else Add(summands_s)
+      else if (sumsNew.length == 1) sumsNew(0)
+      else Add(sumsNew)
     }
     
     /** Evaluate n-ary addition. */
@@ -290,14 +290,14 @@ object Expression {
      * `(* a (* b c)) => (* a b c)`
      */
     def flatten(): Mul = {
-      val factors_new = new ListBuffer[Expr]
+      val factorsNew = new ListBuffer[Expr]
       for (s <- this.factors) {
         s match {
-          case m: Mul => factors_new ++= m.flatten().factors
-          case _      => factors_new += s
+          case m: Mul => factorsNew ++= m.flatten().factors
+          case _      => factorsNew += s
         }
       }
-      Mul(factors_new.toList)
+      Mul(factorsNew.toList)
     }
 
     /** Convert instance to a pretty printed string. */
@@ -324,25 +324,24 @@ object Expression {
     /** Simplify a n-ary multiplication */
     override def simplify(): Expr = {
       //flatten nested Mul
-      val mul_f = this.flatten()
+      val mulF = this.flatten()
 
       // 0 * a = 0
-      if (mul_f.factors.contains(Num(0))) return Num(0)
-      //TODO: Distribute powers: (a*b*c)**d -> a**d * b**d * c**d
+      if (mulF.factors.contains(Num(0))) return Num(0)
 
       //multiply the numbers with each other, keep all other elements unchanged
-      val (nums, others) = mul_f.factors.partition(t => t.isInstanceOf[Num])
+      val (nums, others) = mulF.factors.partition(t => t.isInstanceOf[Num])
       val prod = nums.map(x => x.asInstanceOf[Num].num)
                  .reduceOption((x, y) => x * y)
                  .filterNot(t => t == 1) //if result is `1` remove it
                  .map(Num).toList
-      val factors_p = prod ::: others
+      val factsNew = prod ::: others
 
       //The only remaining factor was a `1` which was filtered out. 
-      if (factors_p.length == 0) return Num(1)
+      if (factsNew.length == 0) return Num(1)
       //Remove Muls with only one argument:  (* 23) -> 23
-      else if (factors_p.length == 1) factors_p(0)
-      else Mul(factors_p)
+      else if (factsNew.length == 1) factsNew(0)
+      else Mul(factsNew)
     }
     
     /** Evaluate n-ary multiplication. */
@@ -460,8 +459,8 @@ object Expression {
      * and evaluate the next expression in the new environment.
      */
     override def eval(env: Environment = Environment()): Expr = {
-      val env_new = env.updated(name, value.eval(env))
-      exprNext.eval(env_new)
+      val envNew = env.updated(name, value.eval(env))
+      exprNext.eval(envNew)
     }
   
     /** Differentiate `let name = value in exprNext`. */
@@ -476,7 +475,7 @@ object Expression {
       //create the two intertwined let expressions
       val innerLet = Let(valueDName, valueD, nextExprD)
       Let(name, value, innerLet)
-      //TODO: simplify_let: remove unused variables.
+      //TODO: simplify let: remove unused variables.
     }
   }  
   
@@ -617,7 +616,7 @@ object SymbolicMainOo {
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))
   
   /** Test operators and `let` DSL */
-  def test_operators() {
+  def testOperators() {
     //The basic operations are implemented
     assert(a + b == Add(a :: b :: Nil))
     assert(a - b == Add(a :: Mul(Num(-1) :: b :: Nil) :: Nil))
@@ -650,7 +649,7 @@ object SymbolicMainOo {
   }
 
   /** Test pretty printing */
-  def test_prettyStr() {
+  def testPrettyStr() {
     assert(Num(23).prettyStr() == "23.0")
     assert((-Num(2)).prettyStr() == "-2.0")
     assert(a.prettyStr() == "a")
@@ -672,7 +671,7 @@ object SymbolicMainOo {
   }
 
   /** test simplification functions */
-  def test_simplify() = {
+  def testSimplify() = {
     //Test `simplify Mul`: correct treatment of `-term` as ((-1) * term)  -----
     // -(2) = -2
     assert((-Num(2)).simplify() == Num(-2))
@@ -734,7 +733,7 @@ object SymbolicMainOo {
 
 
   /** Test differentiation */
-  def test_diff() = {
+  def testDiff() = {
     //diff(2, x) must be 0
     assert(diff(Num(2), x) == Num(0))
     //diff(a, x)  must be 0
@@ -790,7 +789,7 @@ object SymbolicMainOo {
 
 
   /** Test evaluation of expressions */
-  def test_eval() = {
+  def testEval() = {
     //Environment: x = 5
     val env = Env(x := 5)
     assert(env == Map("x" -> Num(5)))
@@ -831,11 +830,11 @@ object SymbolicMainOo {
   
   /** Run the test application. */
   def main(args : Array[String]) : Unit = {
-    test_operators()
-    test_prettyStr()
-    test_simplify()
-    test_diff()
-    test_eval()
+    testOperators()
+    testPrettyStr()
+    testSimplify()
+    testDiff()
+    testEval()
 
     println("Tests finished successfully. (OO)")
   }

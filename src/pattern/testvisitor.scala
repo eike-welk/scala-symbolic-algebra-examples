@@ -48,15 +48,15 @@ package testvisitor {
      * Convert elements of `terms` to strings,
      * and place string `sep` between them 
      * */
-    def convert_join(sep: String, terms: List[Expr]) = {
-      val str_lst = terms.map { _.accept(this) }
-      str_lst.reduce((s1, s2) => s1 + sep + s2)
+    def convertJoin(sep: String, terms: List[Expr]) = {
+      val strLst = terms.map { _.accept(this) }
+      strLst.reduce((s1, s2) => s1 + sep + s2)
     }
 
     def visitNum(num: Num) = num.num.toString()
     def visitSym(sym: Sym) = sym.name
     def visitNeg(neg: Neg) = "-" + neg.term.accept(this)
-    def visitAdd(add: Add) = convert_join(" + ", add.summands)
+    def visitAdd(add: Add) = convertJoin(" + ", add.summands)
   }
 }
 
