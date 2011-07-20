@@ -630,19 +630,18 @@ object ExprOps {
     //flatten nested Add
     val add_f = flatten_add(expr)
 
-    // 0 + a = a - remove all "0" elements
-    val summands0 = add_f.summands.filterNot(t => t == Num(0))
-    if (summands0 == Nil) return Num(0)
-    //TODO: Distribute negative sign: -(a+b+c) -> -a + -b + -c
-
     //sum the numbers up, keep all other elements unchanged
-    val (nums, others) = summands0.partition(t => t.isInstanceOf[Num])
+    val (nums, others) = add_f.summands.partition(t => t.isInstanceOf[Num])
     val sum = nums.map(x => x.asInstanceOf[Num].num)
-                  .reduceOption((x, y) => x + y).map(Num).toList
+                  .reduceOption((x, y) => x + y)
+                  .filterNot(t => t == 0) //if result is `0` remove it
+                  .map(Num).toList
     val summands_s = sum ::: others
 
-    //Remove Muls with only one argument:  (* 23) -> 23
-    if (summands_s.length == 1) summands_s(0)
+    //The only remaining summand was a `0` which was filtered out. 
+    if (summands_s.length == 0) return Num(0)
+    //Remove Adds with only one argument:  (+ 23) -> 23
+    else if (summands_s.length == 1) summands_s(0)
     else Add(summands_s)
   }
 
@@ -829,11 +828,12 @@ object SymbolicMainV {
     // 0+0+0 = 0
     assert(simplify_add(Num(0) + 0 + 0) == Num(0))
     // 0+a = 0
-    //pprintln(simplify_add(Add(Num(1) :: a :: Nil)), true)
     assert(simplify_add(0 + a) == a)
+    // a + (-3) + 3 = a
+    assert(simplify_add(a + Num(-3) + 3) == a)
     // 0 + 1 + 2 + 3 = 6
     assert(simplify_add(Num(0) + 1 + 2 + 3) == Num(6))
-    // a * b = a * b
+    // a + b = a + b
     assert(simplify_add(a + b) == a + b)
 
     //Test `simplify_pow` -----------------------------------------------
@@ -929,7 +929,9 @@ object SymbolicMainV {
     // -x must be -5
     assert(eval(-x, env) == Num(-5))
     // -a must be -a
-    assert(eval(-a, env) == -a)
+    assert(eval(-a, env) == -a)   
+    // a - 3 + 3 = a
+    assert(eval(a - 3 + 3) == a)
     // x~^2 must be 25
     assert(eval(x~^2, env) == Num(25))
     // x~^a must be 5~^a
@@ -965,4 +967,3 @@ object SymbolicMainV {
     println("Tests finished successfully. (V)")
   }
 }
-
