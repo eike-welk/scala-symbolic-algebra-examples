@@ -231,7 +231,7 @@ object ExprOps {
       case _         => -1   //No parentheses necessary
     }
     
-    val sRep = node match {
+    val nodeStr = node match {
       case Num(num) => 
         if (num == E) "E"
         else num.toString()
@@ -241,7 +241,7 @@ object ExprOps {
         for (s <- summands) {
           s match {
             // (-1) * a => " - a"
-            case Mul(Num(-1) :: fact :: Nil) => sRaw += " - " + prettyStr(fact, node)
+            case Mul(Num(-1) :: fact :: Nil) => sRaw += " - " + prettyStr(fact, Mul(Nil))
             case summand                     => sRaw += " + " + prettyStr(summand, node)
           }
         }
@@ -256,7 +256,7 @@ object ExprOps {
         for (f <- factors) {
           f match {
             // a ~^ (-1) => " / a"
-            case Pow(base, Num(-1)) => sRaw += " / " + prettyStr(base, node)
+            case Pow(base, Num(-1)) => sRaw += " / " + prettyStr(base, Pow(0, 0))
             case fact               => sRaw += " * " + prettyStr(fact, node)
           }
         }
@@ -277,9 +277,9 @@ object ExprOps {
     
     //Put parentheses around the term if necessary
     val (precTerm, precOuter) = (precedence(node), precedence(outerNode))
-    if (precTerm == -1 || precOuter == -1)  sRep
-    else if (precTerm < precOuter)          "(" + sRep + ")"
-    else                                    sRep
+    if (precTerm == -1 || precOuter == -1)  nodeStr
+    else if (precTerm < precOuter)          "(" + nodeStr + ")"
+    else                                    nodeStr
   }
   
   /** Print AST in human readable form. */
@@ -549,6 +549,8 @@ object SymbolicMainM {
     assert(prettyStr(a * b + x) == "a * b + x")
     assert(prettyStr(a * (b + x)) == "a * (b + x)")
     assert(prettyStr(a ~^ (b + x)) == "a ~^ (b + x)") 
+    assert(prettyStr(a + b - (2 + x)) == "a + b - (2.0 + x)")
+    assert(prettyStr(a * b / (2 * x)) == "a * b / (2.0 * x)")
   }
 
 

@@ -243,6 +243,7 @@ class PrettyStrVisitor extends StrVisitor {
   //Stack of operator precedences so that the visitor can insert parentheses
   //into the string representation if necessary. The precedence of the last 
   //operator is at the top of the stack.
+  //Used by: `putParentheses`
   val precStack = Stack(-1)
   
   //Compute precedence of a node, for putting parentheses around the string 
@@ -257,7 +258,7 @@ class PrettyStrVisitor extends StrVisitor {
   /**
    * Put parentheses around the string representation of a node if necessary.
    *
-   * If the node on the top of the stack is a binary operator
+   * If the node on the top of `precStack` is a binary operator
    * with higher precedence than the current operator, then a pair of
    * parentheses is put around term's string representation.
    * 
@@ -281,18 +282,20 @@ class PrettyStrVisitor extends StrVisitor {
   
   def visitAdd(add: Add): String = {
     var sRep = ""
-    precStack.push(precedence(add))
     for (s <- add.summands) {
       // (-1) * a => " - a"
       if (s.isInstanceOf[Mul] && 
           s.asInstanceOf[Mul].factors.length == 2 && 
           s.asInstanceOf[Mul].factors(0) == Num(-1)) {
+        precStack.push(precedence(Pow(0, 0))) //for a + b - (c + d)
         sRep += " - " + s.asInstanceOf[Mul].factors(1).acceptStr(this)
+        precStack.pop()
       } else {
+        precStack.push(precedence(add))
         sRep += " + " + s.acceptStr(this)
+        precStack.pop()
       }
     }
-    precStack.pop()
     
     if      (sRep.startsWith(" + ")) sRep = sRep.substring(3)
     else if (sRep.startsWith(" - ")) sRep = "-" + sRep.substring(3)
@@ -301,9 +304,9 @@ class PrettyStrVisitor extends StrVisitor {
   }
   
   def visitMul(mul: Mul): String = {
-    //convert single "-a": (-1) * a => "-a"
     var sRep = ""
     precStack.push(precedence(mul))
+    //convert single "-a": (-1) * a => "-a"
     if (mul.asInstanceOf[Mul].factors.length == 2 && 
         mul.asInstanceOf[Mul].factors(0) == Num(-1)) {
       sRep = "-" + mul.factors(1).acceptStr(this)
@@ -313,7 +316,9 @@ class PrettyStrVisitor extends StrVisitor {
         // a ~^ (-1) => " / a"
         if (f.isInstanceOf[Pow] && 
             f.asInstanceOf[Pow].exponent == Num(-1)) {
+          precStack.push(precedence(Pow(0, 0))) //for a * b / (c * d)
           sRaw += " / " + f.asInstanceOf[Pow].base.acceptStr(this)
+          precStack.pop()
         } else {
           sRaw += " * " + f.acceptStr(this)
         }
@@ -794,6 +799,8 @@ object SymbolicMainV {
     assert(prettyStr(a * b + x) == "a * b + x")
     assert(prettyStr(a * (b + x)) == "a * (b + x)")
     assert(prettyStr(a ~^ (b + x)) == "a ~^ (b + x)") 
+    assert(prettyStr(a + b - (2 + x)) == "a + b - (2.0 + x)")
+    assert(prettyStr(a * b / (2 * x)) == "a * b / (2.0 * x)")
   }
 
 

@@ -243,7 +243,7 @@ object Expression {
         var sRep = ""
         for (s <- summands) {
           s match {
-            case Mul(Num(-1) :: fact :: Nil) => sRep += " - " + fact.prettyStr(this)
+            case Mul(Num(-1) :: fact :: Nil) => sRep += " - " + fact.prettyStr(Mul(Nil))
             case summand                     => sRep += " + " + summand.prettyStr(this)
           }
         }
@@ -309,7 +309,7 @@ object Expression {
           var sRaw = ""
           for (f <- factors) {
             f match {
-              case Pow(base, Num(-1)) => sRaw += " / " + base.prettyStr(this)
+              case Pow(base, Num(-1)) => sRaw += " / " + base.prettyStr(Pow(0, 0))
               case fact               => sRaw += " * " + fact.prettyStr(this)
             }
           }
@@ -668,6 +668,8 @@ object SymbolicMainOo {
     assert((a * b + x).prettyStr() == "a * b + x")
     assert((a * (b + x)).prettyStr() == "a * (b + x)")
     assert((a ~^ (b + x)).prettyStr() == "a ~^ (b + x)") 
+    assert((a + b - (2 + x)).prettyStr() == "a + b - (2.0 + x)")
+    assert((a * b / (2 * x)).prettyStr() == "a * b / (2.0 * x)")
   }
 
   /** test simplification functions */
