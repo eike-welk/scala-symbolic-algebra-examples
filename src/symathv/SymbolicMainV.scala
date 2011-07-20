@@ -52,11 +52,13 @@ object Expression {
    * }}}
    */
   abstract class Expr {
+    import ExprOps._
+    
     //Binary operators
-    def +(other: Expr) = ExprOps.flatten_add(Add(this :: other :: Nil))
-    def -(other: Expr) = Add(this :: Neg(other) :: Nil)
-    def unary_- = Neg(this)
-    def *(other: Expr) = ExprOps.flatten_mul(Mul(this :: other :: Nil))
+    def +(other: Expr) = flatten_add(Add(this :: other :: Nil))
+    def -(other: Expr) = Add(this :: other.unary_- :: Nil)
+    def unary_-        = Mul(Num(-1) :: this :: Nil)
+    def *(other: Expr) = flatten_mul(Mul(this :: other :: Nil))
     def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
     /** Power operator. Can't be `**` or `^`, their precedence is too low. */
     def ~^(other: Expr) = Pow(this, other)
@@ -85,11 +87,6 @@ object Expression {
   case class Sym(name: String) extends Expr {
     override def acceptStr(v: StrVisitor) = v.visitSym(this)
     override def acceptExpr(v: ExprVisitor) = v.visitSym(this)
-  }
-  /** Unary minus (-x) */
-  case class Neg(term: Expr) extends Expr {
-    override def acceptStr(v: StrVisitor) = v.visitNeg(this)
-    override def acceptExpr(v: ExprVisitor) = v.visitNeg(this)
   }
   /** N-ary addition (+ a b c d). Subtraction is emulated with the unary minus operator */
   case class Add(summands: List[Expr]) extends Expr {
@@ -215,7 +212,6 @@ abstract class StrVisitor {
   
   def visitNum(num: Num): String
   def visitSym(sym: Sym): String
-  def visitNeg(neg: Neg): String
   def visitAdd(add: Add): String
   def visitMul(mul: Mul): String
   def visitPow(pow: Pow): String
@@ -243,12 +239,36 @@ abstract class StrVisitor {
  */
 class PrettyStrVisitor extends StrVisitor {
   import Expression._
+
+  //Stack of operator precedences so that the visitor can insert parentheses
+  //into the string representation if necessary. The precedence of the last 
+  //operator is at the top of the stack.
+  val precStack = Stack(-1)
   
-  //Convert elements of `terms` to strings,
-  //and place string `sep` between them
-  def convert_join(sep: String, terms: List[Expr]) = {
-    val str_lst = terms.map(t => t.acceptStr(this))
-    str_lst.reduce((s1, s2) => s1 + sep + s2)
+  //Compute precedence of a node, for putting parentheses around the string 
+  //representation if necessary.
+  def precedence(e: Expr) = e match {
+    case Asg(_, _) => 1
+    case Add(_)    => 2
+    case Mul(_)    => 3
+    case Pow(_, _) => 4
+    case _         => -1   //No parentheses necessary
+  }
+  /**
+   * Put parentheses around the string representation of a node if necessary.
+   *
+   * If the node on the top of the stack is a binary operator
+   * with higher precedence than the current operator, then a pair of
+   * parentheses is put around term's string representation.
+   * 
+   * @param nodeStr   String representation of `node`
+   * @param node      The node that is converted to a string
+   */
+  def putParentheses(nodeStr: String, node: Expr) = {
+    val (precTerm, precOuter) = (precedence(node), precStack.top)
+    if (precTerm == -1 || precOuter == -1)  nodeStr
+    else if (precTerm < precOuter)          "(" + nodeStr + ")"
+    else                                    nodeStr  
   }
 
   //The string conversion functions for the different nodes
@@ -256,17 +276,78 @@ class PrettyStrVisitor extends StrVisitor {
     if (n.num == E) "E"
     else n.num.toString()
   }
+  
   def visitSym(sym: Sym) = sym.name.toString()
-  def visitNeg(neg: Neg) = "-" + neg.term.acceptStr(this)
-  def visitAdd(add: Add): String = convert_join(" + ", add.summands)
-  def visitMul(mul: Mul): String = convert_join(" * ", mul.factors)
-  def visitPow(pow: Pow): String = 
-    pow.base.acceptStr(this) + " ~^ " + pow.exponent.acceptStr(this)
-  def visitLog(log: Log): String = 
-    "log(" + log.base.acceptStr(this) + ", " + log.power.acceptStr(this) + ")"
-  def visitLet(let: Let): String = 
-    "let " + let.name + " := " + let.value.acceptStr(this) + " in \n" + 
-    let.exprNext.acceptStr(this)
+  
+  def visitAdd(add: Add): String = {
+    var sRep = ""
+    precStack.push(precedence(add))
+    for (s <- add.summands) {
+      // (-1) * a => " - a"
+      if (s.isInstanceOf[Mul] && 
+          s.asInstanceOf[Mul].factors.length == 2 && 
+          s.asInstanceOf[Mul].factors(0) == Num(-1)) {
+        sRep += " - " + s.asInstanceOf[Mul].factors(1).acceptStr(this)
+      } else {
+        sRep += " + " + s.acceptStr(this)
+      }
+    }
+    precStack.pop()
+    
+    if      (sRep.startsWith(" + ")) sRep = sRep.substring(3)
+    else if (sRep.startsWith(" - ")) sRep = "-" + sRep.substring(3)
+    else throw new Exception("Internal Error!") 
+    putParentheses(sRep, add)
+  }
+  
+  def visitMul(mul: Mul): String = {
+    //convert single "-a": (-1) * a => "-a"
+    var sRep = ""
+    precStack.push(precedence(mul))
+    if (mul.asInstanceOf[Mul].factors.length == 2 && 
+        mul.asInstanceOf[Mul].factors(0) == Num(-1)) {
+      sRep = "-" + mul.factors(1).acceptStr(this)
+    } else {
+      var sRaw = ""
+      for (f <- mul.factors) {
+        // a ~^ (-1) => " / a"
+        if (f.isInstanceOf[Pow] && 
+            f.asInstanceOf[Pow].exponent == Num(-1)) {
+          sRaw += " / " + f.asInstanceOf[Pow].base.acceptStr(this)
+        } else {
+          sRaw += " * " + f.acceptStr(this)
+        }
+      }        
+      if      (sRaw.startsWith(" * ")) sRep = sRaw.substring(3)
+      else if (sRaw.startsWith(" / ")) sRep = "1 / " + sRaw.substring(3)
+      else throw new Exception("Internal Error!") 
+    }
+    precStack.pop()
+    putParentheses(sRep, mul)
+  }
+  
+  def visitPow(pow: Pow): String = {
+    precStack.push(precedence(pow))
+    val sRep = pow.base.acceptStr(this) + " ~^ " + pow.exponent.acceptStr(this)
+    precStack.pop()
+    putParentheses(sRep, pow)
+  }
+  
+  def visitLog(log: Log): String = {
+    precStack.push(precedence(log))
+    val sRep = "log(" + log.base.acceptStr(this) + ", " + 
+               log.power.acceptStr(this) + ")"
+    precStack.pop()
+    putParentheses(sRep, log)
+  }
+  
+  def visitLet(let: Let): String = {
+    precStack.push(precedence(let))
+    val sRep = "let " + let.name + " := " + let.value.acceptStr(this) + " in \n" + 
+               let.exprNext.acceptStr(this)
+    precStack.pop()
+    putParentheses(sRep, let)
+  }
 }
 
 
@@ -282,7 +363,6 @@ abstract class ExprVisitor {
   
   def visitNum(num: Num): Expr
   def visitSym(sym: Sym): Expr
-  def visitNeg(neg: Neg): Expr
   def visitAdd(add: Add): Expr
   def visitMul(mul: Mul): Expr
   def visitPow(pow: Pow): Expr
@@ -326,7 +406,6 @@ class EvalVisitor(inEnvironment: Expression.Environment) extends ExprVisitor {
   
   def visitNum(num: Num) = num
   def visitSym(sym: Sym) = env.getOrElse(sym.name, sym)
-  def visitNeg(neg: Neg) = simplify_neg(Neg(neg.term.acceptExpr(this)))
   def visitAdd(add: Add) = simplify_add(Add(add.summands.map(t => t.acceptExpr(this))))
   def visitMul(mul: Mul) = simplify_mul(Mul(mul.factors.map(t => t.acceptExpr(this))))
   def visitPow(pow: Pow) = 
@@ -385,7 +464,6 @@ class DiffVisitor(x: Expression.Sym, env: Expression.Environment)
     else                          Num(0)
   }
   
-  def visitNeg(neg: Neg): Expr = simplify_neg(Neg(diff(neg.term, x, env)))
   def visitAdd(add: Add): Expr = 
     simplify_add(Add(add.summands.map(t => diff(t, x, env))))
   
@@ -547,24 +625,6 @@ object ExprOps {
     Mul(factors_new.toList)
   }
 
-  /** Simplify minus sign (Neg) */
-  def simplify_neg(expr: Expr): Expr = {
-    if (expr.isInstanceOf[Neg]) {
-      val neg = expr.asInstanceOf[Neg]
-      //case Neg(Num(num)) => Num(-num)
-      if (neg.term.isInstanceOf[Num]) {
-        val num = neg.term.asInstanceOf[Num]
-        return Num(-num.num)
-      //case Neg(Neg(term)) => simplify_neg(term)
-      } else if (neg.term.isInstanceOf[Neg]) {
-        val negInner = neg.term.asInstanceOf[Neg]
-        return simplify_neg(negInner.term)
-      }
-    }
-    //case _ => expr
-    return expr
-  }
-
   /** Simplify a n-ary addition */
   def simplify_add(expr: Add): Expr = {
     //flatten nested Add
@@ -593,19 +653,20 @@ object ExprOps {
 
     // 0 * a = 0
     if (mul_f.factors.contains(Num(0))) return Num(0)
-    // 1 * a = a - remove all "1" elements
-    val factors1 = mul_f.factors.filterNot(t => t == Num(1))
-    if (factors1 == Nil) return Num(1)
     //TODO: Distribute powers: (a*b*c)~^d -> a~^d * b~^d * c~^d
 
     //multiply the numbers with each other, keep all other elements unchanged
-    val (nums, others) = factors1.partition(t => t.isInstanceOf[Num])
+    val (nums, others) = mul_f.factors.partition(t => t.isInstanceOf[Num])
     val prod = nums.map(x => x.asInstanceOf[Num].num)
-                   .reduceOption((x, y) => x * y).map(Num).toList
+                   .reduceOption((x, y) => x * y)
+                   .filterNot(t => t == 1) //if result is `1` remove it
+                   .map(Num).toList
     val factors_p = prod ::: others
 
+    //The only remaining factor was a `1` which was filtered out. 
+    if (factors_p.length == 0) return Num(1)
     //Remove Muls with only one argument:  (* 23) -> 23
-    if (factors_p.length == 1) factors_p(0)
+    else if (factors_p.length == 1) factors_p(0)
     else Mul(factors_p)
   }
 
@@ -685,20 +746,20 @@ object SymbolicMainV {
   def test_operators() = {
     //The basic operations are implemented
     assert(a + b == Add(a :: b :: Nil))
-    assert(a - b == Add(a :: Neg(b) :: Nil))
-    assert(-a == Neg(a)) 
+    assert(a - b == Add(a :: Mul(Num(-1) :: b :: Nil) :: Nil))
+    assert(-a == Mul(Num(-1) :: a :: Nil)) 
     assert(a * b == Mul(a :: b :: Nil))
     assert(a / b == Mul(a :: Pow(b, Num(-1)) :: Nil))
     assert(a ~^ b == Pow(a, b))
     //Mixed operations work
     assert(a + 2 == Add(a :: Num(2) :: Nil))
-    assert(a - 2 == Add(a :: Neg(Num(2)) :: Nil))
+    assert(a - 2 == Add(a :: (Num(-1) * Num(2)) :: Nil))
     assert(a * 2 == Mul(a :: Num(2) :: Nil))
     assert(a / 2 == Mul(a :: Pow(Num(2), Num(-1)) :: Nil))
     assert(a ~^ 2 == Pow(a, Num(2)))
     //Implicit conversions work
     assert(2 + a == Add(Num(2) :: a :: Nil))
-    assert(2 - a == Add(Num(2) :: Neg(a) :: Nil))
+    assert(2 - a == Add(Num(2) :: (Num(-1) * a) :: Nil))
     assert(2 * a == Mul(Num(2) :: a :: Nil))
     assert(2 / a == Mul(Num(2) :: Pow(a, Num(-1)) :: Nil))
     assert(2 ~^ a == Pow(Num(2), a))
@@ -706,7 +767,7 @@ object SymbolicMainV {
     assert(a + b + x == Add(a :: b :: x :: Nil))
     assert(a * b * x == Mul(a :: b :: x :: Nil))
     //mixed + and - work propperly
-    assert(a - b + x == Add(a :: Neg(b) :: x :: Nil))
+    assert(a - b + x == Add(a :: (Num(-1) * b) :: x :: Nil))
     //mixed * and / work propperly
     assert(a / b * x == Mul(a :: Pow(b, Num(-1)) :: x :: Nil))
     //create `Let` nodes
@@ -717,35 +778,40 @@ object SymbolicMainV {
 
   /** Test pretty printing */
   def test_prettyStr() {
-    val v = new PrettyStrVisitor()
-    
     assert(prettyStr(Num(23)) == "23.0")
-    assert(prettyStr((a)) == "a")
-    assert(prettyStr(Neg(2)) == "-2.0")
-    assert(prettyStr((a + b)) == "a + b")
-    assert(prettyStr((a - b)) == "a + -b")
-    assert(prettyStr((a * b)) == "a * b")
-    assert(prettyStr((a / b)) == "a * b ~^ -1.0")
-    assert(prettyStr((a ~^ b)) == "a ~^ b")
+    assert(prettyStr(-Num(2)) == "-2.0")
+    assert(prettyStr(a) == "a")
+    assert(prettyStr(a + b) == "a + b")
+    assert(prettyStr(a - b) == "a - b")
+    assert(prettyStr(-a + b) == "-a + b")
+    assert(prettyStr(-a) == "-a")
+    assert(prettyStr(a * b) == "a * b")
+    assert(prettyStr(a / b) == "a / b")
+    assert(prettyStr(a ~^ -1 * b) == "1 / a * b")
+    assert(prettyStr(a ~^ b) == "a ~^ b")
     assert(prettyStr(Log(a, b)) == "log(a, b)")
     assert(prettyStr(Let("a", 2, a + x)) == "let a := 2.0 in \na + x")
+    //Parentheses if necessary
+    assert(prettyStr(a + b + x) == "a + b + x")
+    assert(prettyStr(a * b + x) == "a * b + x")
+    assert(prettyStr(a * (b + x)) == "a * (b + x)")
+    assert(prettyStr(a ~^ (b + x)) == "a ~^ (b + x)") 
   }
 
 
   /** test simplification functions */
   def test_simplify() = {
-    //Test `simplify_neg` -----------------------------------------------
+    //Test `simplify_mul`: correct treatment of `-term` as ((-1) * term)  -----
     // -(2) = -2
-    assert(simplify_neg(-Num(2)) == Num(-2))
+    assert(simplify_mul(-Num(2)) == Num(-2))
     // --a = a
-    assert(simplify_neg(-(-a)) == a)
+    assert(simplify_mul(-(-a)) == a)
     // ----a = a
-    //pprintln(simplify_neg(Neg(Neg(Neg(Neg(a))))), true)
-    assert(simplify_neg(-(-(-(-a)))) == a)
+    assert(simplify_mul(-(-(-(-a)))) == a)
     // ---a = -a
-    assert(simplify_neg(-(-(-a))) == Neg(a))
+    assert(simplify_mul(-(-(-a))) == -a)
     // -a = -a
-    assert(simplify_neg(-a) == Neg(a))
+    assert(simplify_mul(-a) == -a)
 
     //Test `simplify_mul` -----------------------------------------------
     // 0*a = 0
@@ -804,7 +870,7 @@ object SymbolicMainV {
     assert(diff(x, x) == Num(1))
     //diff(-x, x) must be -1
     //pprintln(diff(Neg(x), x), true)
-    assert(diff(Neg(x), x) == Num(-1))
+    assert(diff(-x, x) == Num(-1))
     //diff(2 + a + x, x) must be 1
     assert(diff(2 + a + x, x) == Num(1))
     //diff(2 * x, x) must be 2
@@ -861,9 +927,9 @@ object SymbolicMainV {
     // x must be 5
     assert(eval(x, env) == Num(5))
     // -x must be -5
-    assert(eval(Neg(x), env) == Num(-5))
+    assert(eval(-x, env) == Num(-5))
     // -a must be -a
-    assert(eval(Neg(a), env) == Neg(a))
+    assert(eval(-a, env) == -a)
     // x~^2 must be 25
     assert(eval(x~^2, env) == Num(25))
     // x~^a must be 5~^a

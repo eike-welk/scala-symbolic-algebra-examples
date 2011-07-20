@@ -213,15 +213,15 @@ object ExprOps {
   /** 
    * Convert the AST to a string in normal infix notation for math.
    * 
-   * @param term      The node that is converted to a string
+   * @param node      The node that is converted to a string
    * @param outerNode The surrounding node. If this node is a binary operator
    *                  with higher precedence than term, then a pair of 
    *                  parentheses is put around term's string representation.
    * For printing see: [[symathm.ExprOps.pprintln]] */
-  def prettyStr(term: Expr, 
+  def prettyStr(node: Expr, 
                 outerNode: Expr = Let("", 0, 0) //`Let` has lowest precedence
                 ): String = {
-    //The precedence of each node, for putting parentheses around the string 
+    //Compute precedence of a node, for putting parentheses around the string 
     //representation if necessary.
     def precedence(e: Expr) = e match {
       case Asg(_, _) => 1
@@ -231,31 +231,33 @@ object ExprOps {
       case _         => -1   //No parentheses necessary
     }
     
-    val sRaw = term match {
+    val sRep = node match {
       case Num(num) => 
         if (num == E) "E"
         else num.toString()
       case Sym(name) => name
-      case Add(termLst) => {
+      case Add(summands) => {
         var sRaw = ""
-        for (t <- termLst) {
-          t match {
-            case Mul(Num(-1) :: fact :: Nil) => sRaw += " - " + prettyStr(fact, term)
-            case summand                     => sRaw += " + " + prettyStr(summand, term)
+        for (s <- summands) {
+          s match {
+            // (-1) * a => " - a"
+            case Mul(Num(-1) :: fact :: Nil) => sRaw += " - " + prettyStr(fact, node)
+            case summand                     => sRaw += " + " + prettyStr(summand, node)
           }
         }
         if      (sRaw.startsWith(" + ")) sRaw.substring(3)
         else if (sRaw.startsWith(" - ")) "-" + sRaw.substring(3)
         else throw new Exception("Internal Error!") 
       }
-      //convert single "-a"
-      case Mul(Num(-1) :: fact :: Nil) => "-" + prettyStr(fact, term)
-      case Mul(termLst)  => {
+      //convert single "-a": (-1) * a => "-a"
+      case Mul(Num(-1) :: fact :: Nil) => "-" + prettyStr(fact, node)
+      case Mul(factors)  => {
         var sRaw = ""
-        for (t <- termLst) {
-          t match {
-            case Pow(base, Num(-1)) => sRaw += " / " + prettyStr(base, term)
-            case fact               => sRaw += " * " + prettyStr(fact, term)
+        for (f <- factors) {
+          f match {
+            // a ~^ (-1) => " / a"
+            case Pow(base, Num(-1)) => sRaw += " / " + prettyStr(base, node)
+            case fact               => sRaw += " * " + prettyStr(fact, node)
           }
         }
         if      (sRaw.startsWith(" * ")) sRaw.substring(3)
@@ -263,21 +265,21 @@ object ExprOps {
         else throw new Exception("Internal Error!") 
       }
       case Pow(base, exp) => 
-        prettyStr(base, term) + " ~^ " + prettyStr(exp, term)
+        prettyStr(base, node) + " ~^ " + prettyStr(exp, node)
       case Log(base, pow) => 
-        "log(" + prettyStr(base, term) + ", " + prettyStr(pow, term) + ")"
+        "log(" + prettyStr(base, node) + ", " + prettyStr(pow, node) + ")"
       case Let(name, value, in) => 
-        "let " + name + " := " + prettyStr(value, term) + " in \n" + 
-        prettyStr(in, term)
+        "let " + name + " := " + prettyStr(value, node) + " in \n" + 
+        prettyStr(in, node)
       case _ => throw new IllegalArgumentException(
-                            "Unknown expression: '%s'.".format(term))
+                            "Unknown expression: '%s'.".format(node))
     }
     
     //Put parentheses around the term if necessary
-    val (precTerm, precOuter) = (precedence(term), precedence(outerNode))
-    if (precTerm == -1 || precOuter == -1)  sRaw
-    else if (precTerm < precOuter)          "(" + sRaw + ")"
-    else                                    sRaw
+    val (precTerm, precOuter) = (precedence(node), precedence(outerNode))
+    if (precTerm == -1 || precOuter == -1)  sRep
+    else if (precTerm < precOuter)          "(" + sRep + ")"
+    else                                    sRep
   }
   
   /** Print AST in human readable form. */
@@ -529,6 +531,7 @@ object SymbolicMainM {
   /** Test pretty printing */
   def test_prettyStr() {
     assert(prettyStr(Num(23)) == "23.0")
+    assert(prettyStr(-Num(2)) == "-2.0")
     assert(prettyStr(a) == "a")
     assert(prettyStr(a + b) == "a + b")
     assert(prettyStr(a - b) == "a - b")
@@ -540,6 +543,9 @@ object SymbolicMainM {
     assert(prettyStr(a ~^ b) == "a ~^ b")
     assert(prettyStr(Log(a, b)) == "log(a, b)")
     assert(prettyStr(Let("a", 2, a + x)) == "let a := 2.0 in \na + x")
+    //Parentheses if necessary
+    assert(prettyStr(a + b + x) == "a + b + x")
+    assert(prettyStr(a * b + x) == "a * b + x")
     assert(prettyStr(a * (b + x)) == "a * (b + x)")
     assert(prettyStr(a ~^ (b + x)) == "a ~^ (b + x)") 
   }
@@ -575,11 +581,13 @@ object SymbolicMainM {
     // 0+0+0 = 0
     assert(simplify_add(Num(0) + 0 + 0) == Num(0))
     // 0+a = 0
-    //pprintln(simplify_add(Add(Num(1) :: a :: Nil)), true)
     assert(simplify_add(0 + a) == a)
+    // a + (-3) + 3 = a
+    pprintln(simplify_add(a + Num(-3) + 3))
+//    assert(simplify_add(a + Num(-3) + 3) == a)
     // 0 + 1 + 2 + 3 = 6
     assert(simplify_add(Num(0) + 1 + 2 + 3) == Num(6))
-    // a * b = a * b
+    // a + b = a + b
     assert(simplify_add(a + b) == a + b)
 
     //Test `simplify_pow` -----------------------------------------------
@@ -675,7 +683,10 @@ object SymbolicMainM {
     // -x must be -5
     assert(eval(-x, env) == Num(-5))
     // -a must be -a
-    assert(eval(-a, env) == -a)
+    assert(eval(-a, env) == -a)    
+    // a - 3 + 3 = a
+    pprintln(eval(a - 3 + 3))
+//    assert(eval(a - 3 + 3) == a)
     // x~^2 must be 25
     assert(eval(x~^2, env) == Num(25))
     // x~^a must be 5~^a

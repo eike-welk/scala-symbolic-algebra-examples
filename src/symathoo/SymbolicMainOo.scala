@@ -85,8 +85,8 @@ object Expression {
   abstract class Expr {
     //Binary operators.
     def +(other: Expr) = Add(this :: other :: Nil).flatten()
-    def -(other: Expr) = Add(this :: Neg(other) :: Nil)
-    def unary_- = Neg(this)
+    def -(other: Expr) = Add(this :: other.unary_- :: Nil)
+    def unary_-        = Mul(Num(-1) :: this :: Nil)
     def *(other: Expr) = Mul(this :: other :: Nil).flatten()
     def /(other: Expr) = Mul(this :: Pow(other, Num(-1)) :: Nil)
     /** Power operator. Can't be `**` or `^`, their precedence is too low. */
@@ -97,7 +97,10 @@ object Expression {
      * Convert instance to a pretty printed string.
      * '''All child classes must override this method!'''
      */
-    def prettyStr(): String = { throw new Exception("Method is not defined") }
+    def prettyStr(outerNode: Expr = Let("", Num(0), Num(0)) //`Let` has lowest precedence
+                 ): String = { 
+      throw new Exception("Method is not defined") 
+    }
   
     /** Print instance in pretty printed (human readable) form. */
     def pprintln(debug: Boolean = false) = {
@@ -148,24 +151,39 @@ object Expression {
     implicit def double2Num(dnum: Double) = Num(dnum)
   
     /**
-     * Convert elements of `terms` to strings, and place string `sep`
-     * between them.
-     * 
-     * Helper for [[symathoo.Expression.Add.prettyStr]] and 
-     * [[symathoo.Expression.Mul.prettyStr]].
+     * Compute the precedence of each node, for putting parentheses around 
+     * the string representation if necessary.
      */
-    def convert_join(sep: String, terms: List[Expr]) = {
-      val str_lst = terms.map(t => t.prettyStr())
-      str_lst.reduce((s1, s2) => s1 + sep + s2)
+    def precedence(e: Expr) = e match {
+      case Asg(_, _) => 1
+      case Add(_)    => 2
+      case Mul(_)    => 3
+      case Pow(_, _) => 4
+      case _         => -1   //No parentheses necessary
+    }
+    
+    /**
+     * Put parentheses around the string representation of a node if necessary.
+     * 
+     * @param nodeStr   String representation of `node`
+     * @param node      The node that is converted to a string
+     * @param outerNode The surrounding node. If this node is a binary operator
+     *                  with higher precedence than term, then a pair of 
+     *                  parentheses is put around term's string representation.
+     */
+    def putParentheses(nodeStr: String, node: Expr, outerNode: Expr) = {
+      val (precTerm, precOuter) = (precedence(node), precedence(outerNode))
+      if (precTerm == -1 || precOuter == -1)  nodeStr
+      else if (precTerm < precOuter)          "(" + nodeStr + ")"
+      else                                    nodeStr  
     }
   }
-  
   
   //--- The concrete node types --------------------------------------------------
   /** Numbers */
   case class Num(num: Double) extends Expr {
     /** Convert instance to a pretty printed string. */
-    override def prettyStr() = { 
+    override def prettyStr(outerNode: Expr = Let("", 0, 0)) = { 
         if (num == E) "E"
         else num.toString()
     }
@@ -180,7 +198,7 @@ object Expression {
   /** Symbols (references to variables) */
   case class Sym(name: String) extends Expr {
     /** Convert instance to a pretty printed string. */
-    override def prettyStr() = name
+    override def prettyStr(outerNode: Expr = Let("", 0, 0)) = name
     /** Returns this object unchanged. */
     override def simplify() = this
     /** Returns value of variable. Unknown variables are returned unchanged. */
@@ -198,31 +216,6 @@ object Expression {
           else if (env.contains(dName)) Sym(dName)
           else                          Num(0)
         }
-  }
-  
-  /** Unary minus (-x) */
-  case class Neg(term: Expr) extends Expr  {
-    /** Convert instance to a pretty printed string. */
-    override def prettyStr() = "-" + term.prettyStr()
-    
-    /** Simplify minus sign.*/
-    override def simplify(): Expr = {
-      this match {
-        case Neg(Num(num))         => Num(-num)
-        //--a = a
-        case Neg(Neg(neg_rec:Neg)) => neg_rec.simplify()
-        case Neg(Neg(term))        => term
-        case _                     => this
-      }
-    }  
-    
-    /** Evaluate minus sign. */
-    override def eval(env: Environment = Environment()): Expr = 
-      Neg(term.eval(env)).simplify()
-  
-    /** Differentiate minus operator.*/
-    override def diff(x: Sym, env: Environment = Environment()): Expr = 
-      Neg(term.diff(x, env)).simplify()
   }
   
   /**
@@ -246,7 +239,20 @@ object Expression {
     }
     
     /** Convert instance to a pretty printed string. */
-    override def prettyStr() = Expr.convert_join(" + ", summands)
+    override def prettyStr(outerNode: Expr = Let("", 0, 0)) = {
+        var sRep = ""
+        for (s <- summands) {
+          s match {
+            case Mul(Num(-1) :: fact :: Nil) => sRep += " - " + fact.prettyStr(this)
+            case summand                     => sRep += " + " + summand.prettyStr(this)
+          }
+        }
+        if      (sRep.startsWith(" + ")) sRep = sRep.substring(3)
+        else if (sRep.startsWith(" - ")) sRep = "-" + sRep.substring(3)
+        else throw new Exception("Internal Error!") 
+        
+        Expr.putParentheses(sRep, this, outerNode)
+    }
   
     /** Simplify a n-ary addition */
     override def simplify(): Expr = {
@@ -294,30 +300,49 @@ object Expression {
       }
       Mul(factors_new.toList)
     }
-    
+
     /** Convert instance to a pretty printed string. */
-    override def prettyStr() = Expr.convert_join(" * ", factors)
-    
+    override def prettyStr(outerNode: Expr = Let("", 0, 0)) = {
+      val sRep = this match {
+        //convert single "-a"
+        case Mul(Num(-1) :: fact :: Nil) => "-" + fact.prettyStr(this)
+        case Mul(factors) => {
+          var sRaw = ""
+          for (f <- factors) {
+            f match {
+              case Pow(base, Num(-1)) => sRaw += " / " + base.prettyStr(this)
+              case fact               => sRaw += " * " + fact.prettyStr(this)
+            }
+          }
+          if (sRaw.startsWith(" * ")) sRaw.substring(3)
+          else if (sRaw.startsWith(" / ")) "1 / " + sRaw.substring(3)
+          else throw new Exception("Internal Error!")
+        }
+      } 
+      Expr.putParentheses(sRep, this, outerNode)
+    }
+
     /** Simplify a n-ary multiplication */
     override def simplify(): Expr = {
       //flatten nested Mul
       val mul_f = this.flatten()
-  
+
       // 0 * a = 0
       if (mul_f.factors.contains(Num(0))) return Num(0)
-      // 1 * a = a - remove all "1" elements
-      val factors1 = mul_f.factors.filterNot(t => t == Num(1))
-      if (factors1 == Nil) return Num(1)
       //TODO: Distribute powers: (a*b*c)**d -> a**d * b**d * c**d
-  
+
       //multiply the numbers with each other, keep all other elements unchanged
-      val (nums, others) = factors1.partition(t => t.isInstanceOf[Num])
+      val (nums, others) = mul_f.factors.partition(t => t.isInstanceOf[Num])
       val prod = nums.map(x => x.asInstanceOf[Num].num)
-                     .reduceOption((x, y) => x * y).map(Num).toList
+                 .reduceOption((x, y) => x * y)
+                 .filterNot(t => t == 1) //if result is `1` remove it
+                 .map(Num).toList
       val factors_p = prod ::: others
-  
+
+      //The only remaining factor was a `1` which was filtered out. 
+      if (factors_p.length == 0) return Num(1)
       //Remove Muls with only one argument:  (* 23) -> 23
-      if (factors_p.length == 1) factors_p(0)
+      else if (factors_p.length == 1) factors_p(0)
       else Mul(factors_p)
     }
     
@@ -345,7 +370,10 @@ object Expression {
     import Expr.{int2Num, double2Num}
     
     /** Convert instance to a pretty printed string. */
-    override def prettyStr() = base.prettyStr() + " ~^ " + exponent.prettyStr()
+    override def prettyStr(outerNode: Expr = Let("", 0, 0)) = {
+      val sRep = base.prettyStr(this) + " ~^ " + exponent.prettyStr(this)
+      Expr.putParentheses(sRep, this, outerNode)
+    }
   
     /** Simplify power. */
     override def simplify(): Expr = {
@@ -387,8 +415,8 @@ object Expression {
   /** Logarithm to arbitrary base */
   case class Log(base: Expr, power: Expr) extends Expr {
     /** Convert instance to a pretty printed string. */
-    override def prettyStr() = "log(" + base.prettyStr() + ", " + 
-                               power.prettyStr() + ")"
+    override def prettyStr(outerNode: Expr = Let("", 0, 0)) = 
+      "log(" + base.prettyStr(this) + ", " + power.prettyStr(this) + ")"
   
     /** Simplify Logarithms */
     override def simplify(): Expr = {
@@ -420,9 +448,9 @@ object Expression {
    */
   case class Let(name: String, value: Expr, exprNext: Expr) extends Expr{
     /** Convert instance to a pretty printed string. */
-    override def prettyStr() = 
-      "let " + name + " := " + value.prettyStr() + " in \n" + 
-      exprNext.prettyStr()
+    override def prettyStr(outerNode: Expr = Let("", 0, 0)) = 
+      "let " + name + " := " + value.prettyStr(this) + " in \n" + 
+      exprNext.prettyStr(this)
     /** Returns this object unchanged. */
     override def simplify() = this
   
@@ -593,20 +621,20 @@ object SymbolicMainOo {
   def test_operators() {
     //The basic operations are implemented
     assert(a + b == Add(a :: b :: Nil))
-    assert(a - b == Add(a :: Neg(b) :: Nil))
-    assert(-a == Neg(a)) 
+    assert(a - b == Add(a :: Mul(Num(-1) :: b :: Nil) :: Nil))
+    assert(-a == Mul(Num(-1) :: a :: Nil)) 
     assert(a * b == Mul(a :: b :: Nil))
     assert(a / b == Mul(a :: Pow(b, Num(-1)) :: Nil))
     assert(a ~^ b == Pow(a, b))
     //Mixed operations work
     assert(a + 2 == Add(a :: Num(2) :: Nil))
-    assert(a - 2 == Add(a :: Neg(Num(2)) :: Nil))
+    assert(a - 2 == Add(a :: (Num(-1) * Num(2)) :: Nil))
     assert(a * 2 == Mul(a :: Num(2) :: Nil))
     assert(a / 2 == Mul(a :: Pow(Num(2), Num(-1)) :: Nil))
     assert(a ~^ 2 == Pow(a, Num(2)))
     //Implicit conversions work
     assert(2 + a == Add(Num(2) :: a :: Nil))
-    assert(2 - a == Add(Num(2) :: Neg(a) :: Nil))
+    assert(2 - a == Add(Num(2) :: (Num(-1) * a) :: Nil))
     assert(2 * a == Mul(Num(2) :: a :: Nil))
     assert(2 / a == Mul(Num(2) :: Pow(a, Num(-1)) :: Nil))
     assert(2 ~^ a == Pow(Num(2), a))
@@ -614,7 +642,7 @@ object SymbolicMainOo {
     assert(a + b + x == Add(a :: b :: x :: Nil))
     assert(a * b * x == Mul(a :: b :: x :: Nil))
     //mixed + and - work propperly
-    assert(a - b + x == Add(a :: Neg(b) :: x :: Nil))
+    assert(a - b + x == Add(a :: (Num(-1) * b) :: x :: Nil))
     //mixed * and / work propperly
     assert(a / b * x == Mul(a :: Pow(b, Num(-1)) :: x :: Nil))
     //create `Let` nodes
@@ -625,33 +653,40 @@ object SymbolicMainOo {
   /** Test pretty printing */
   def test_prettyStr() {
     assert(Num(23).prettyStr() == "23.0")
+    assert((-Num(2)).prettyStr() == "-2.0")
     assert(a.prettyStr() == "a")
-    assert(Neg(2).prettyStr() == "-2.0")
     assert((a + b).prettyStr() == "a + b")
-    assert((a - b).prettyStr() == "a + -b")
+    assert((a - b).prettyStr() == "a - b")
+    assert((-a + b).prettyStr() == "-a + b")
+    assert((-a).prettyStr() == "-a")
     assert((a * b).prettyStr() == "a * b")
-    assert((a / b).prettyStr() == "a * b ~^ -1.0")
+    assert((a / b).prettyStr() == "a / b")
+    assert((a ~^ -1 * b).prettyStr() == "1 / a * b")
     assert((a ~^ b).prettyStr() == "a ~^ b")
     assert(Log(a, b).prettyStr() == "log(a, b)")
     assert(Let("a", 2, a + x).prettyStr() == "let a := 2.0 in \na + x")
+    //Parentheses if necessary
+    assert((a + b + x).prettyStr() == "a + b + x")
+    assert((a * b + x).prettyStr() == "a * b + x")
+    assert((a * (b + x)).prettyStr() == "a * (b + x)")
+    assert((a ~^ (b + x)).prettyStr() == "a ~^ (b + x)") 
   }
 
   /** test simplification functions */
   def test_simplify() = {
-    //Test `simplify_neg` -----------------------------------------------
+    //Test `simplify Mul`: correct treatment of `-term` as ((-1) * term)  -----
     // -(2) = -2
     assert((-Num(2)).simplify() == Num(-2))
     // --a = a
     assert((-(-a)).simplify() == a)
     // ----a = a
-    //pprintln( Neg(Neg(Neg(Neg(a))))), true)
     assert((-(-(-(-a)))).simplify() == a)
     // ---a = -a
-    assert((-(-(-a))).simplify() == Neg(a))
+    assert((-(-(-a))).simplify() == -a)
     // -a = -a
-    assert((-a).simplify() == Neg(a))
+    assert((-a).simplify() == -a)
 
-    //Test `simplify_mul` -----------------------------------------------
+    //Test `simplify Mul` -----------------------------------------------
     // 0*a = 0
     assert((0 * a).simplify() == Num(0))
     // 1*1*1 = 1
@@ -663,7 +698,7 @@ object SymbolicMainOo {
     // a * b = a * b
     assert((a * b).simplify() == a * b)
 
-    //Test `simplify_add` -----------------------------------------------
+    //Test `simplify Add` -----------------------------------------------
     // 0+0+0 = 0
     assert((Num(0) + 0 + 0).simplify() == Num(0))
     // 0+a = 0
@@ -673,7 +708,7 @@ object SymbolicMainOo {
     // a * b = a * b
     assert((a + b).simplify() == a + b)
 
-    //Test `simplify_pow` -----------------------------------------------
+    //Test `simplify Pow` -----------------------------------------------
     // a~^0 = 1
     assert((a ~^ 0).simplify() == Num(1))
     // a~^1 = a
@@ -685,7 +720,7 @@ object SymbolicMainOo {
     //2 ~^ 8 = 256: compute result numerically
     assert(Pow(2, 8).simplify() == Num(256))
 
-    //Test `simplify_log` -----------------------------------------------
+    //Test `simplify Log` -----------------------------------------------
     //log(a, 1) = 0
     assert((Log(a, 1)).simplify() == Num(0))
     //log(a, a) = 1
@@ -707,7 +742,7 @@ object SymbolicMainOo {
     assert(diff(x, x) == Num(1))
     //diff(-x, x) must be -1
     //pprintln(diff(Neg(x), x), true)
-    assert(diff(Neg(x), x) == Num(-1))
+    assert(diff(-x, x) == Num(-1))
     //diff(2 + a + x, x) must be 1
     assert(diff(2 + a + x, x) == Num(1))
     //diff(2 * x, x) must be 2
@@ -764,9 +799,9 @@ object SymbolicMainOo {
     // x must be 5
     assert(eval(x, env) == Num(5))
     // -x must be -5
-    assert(eval(Neg(x), env) == Num(-5))
+    assert(eval(-x, env) == Num(-5))
     // -a must be -a
-    assert(eval(Neg(a), env) == Neg(a))
+    assert(eval(-a, env) == -a)
     // x~^2 must be 25
     assert(eval(x~^2, env) == Num(25))
     // x~^a must be 5~^a
