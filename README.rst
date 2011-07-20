@@ -16,9 +16,9 @@ Therefore this library is implemented three times with different programming
 paradigms:
 
 =====================  =====================================  
-Package: ``symathm``   Functional, with pattern matching.     
-Package: ``symathoo``  Classical object oriented.             
-Package: ``symathv``   Object oriented with Visitor pattern.  
+Package ``symathm`` :  Functional, with pattern matching.     
+Package ``symathoo``:  Classical object oriented.             
+Package ``symathv`` :  Object oriented with Visitor pattern.  
 =====================  =====================================  
 
 
@@ -37,16 +37,16 @@ Package Contents
     The symbolic math library implemented in simple object oriented fashion.
     (Package: ``symathoo``)
 
-``src/pattern/testdsl.scala``
-    Short example implementation of the libraries' "DSL" features.
-``src/pattern/testvisitor.scala``
-    Short example implementation of the visitor pattern. 
+``src/pattern/`` 
+    ``testdsl.scala``
+        Short example implementation of the libraries' "DSL" features.
+    ``testvisitor.scala``
+        Short example implementation of the visitor pattern. 
 
 ``make-compile.sh``
     Compile all Scala source files.
 ``make-scaladoc.sh``
     Create API documentation with ``scaladoc``.
-
 ``README.rst``
     This file.    
 
