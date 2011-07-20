@@ -15,14 +15,40 @@ The project should especially demonstrate the usefulness of pattern matching.
 Therefore this library is implemented three times with different programming 
 paradigms:
 
-Functional, with pattern matching. 
-    Package: ``symathm`` 
+---------------------  -------------------------------------  
+Package: ``symathm``   Functional, with pattern matching.     
+Package: ``symathoo``  Classical object oriented.             
+Package: ``symathv``   Object oriented with Visitor pattern.  
+---------------------  -------------------------------------  
 
-Classical object oriented. 
-    Package: ``symathoo``
 
-Object oriented with the Visitor pattern. 
-    Package: ``symathv``
+Package Contents
+================
+
+``src/symathm/SymbolicMainM``
+    Symbolic math library, implemented in functional fashion, with pattern 
+    matching. 
+    (Package: ``symathm``)
+``src/symathv/SymbolicMainV``
+    Implementation of the library with the visitor pattern. - Object oriented,
+    but structure similar to pattern matching. 
+    (Package: ``symathv``) 
+``src/symathoo/SymbolicMainOO``
+    The symbolic math library implemented in simple object oriented fashion.
+    (Package: ``symathoo``)
+
+``src/pattern/testdsl.scala``
+    Short example implementation of the libraries' "DSL" features.
+``src/pattern/testvisitor.scala``
+    Short example implementation of the visitor pattern. 
+
+``make-compile.sh``
+    Compile all Scala source files.
+``make-scaladoc.sh``
+    Create API documentation with ``scaladoc``.
+
+``README.rst``
+    This file.    
 
 
 Usage
@@ -35,24 +61,27 @@ Either get the software by cloning the repository with Mercurial::
 
   hg clone https://bitbucket.org/eike_welk/scala-symbolic-algebra-test
   
-or download (and extract) one of the auto-generated archives from here:
+Or download (and extract) one of the auto-generated archives from here:
 
   https://bitbucket.org/eike_welk/scala-symbolic-algebra-test/downloads
   
 Without IDE
 -----------
 
-Run the script ``make-compile.sh`` to compile all source files. Then run any 
-object with a ``main`` method. Start with the usage example 
-``UseTheLibraries``, which explains all of the library's (few) features::
+Run the script ``make-compile.sh`` to compile all source files. This might 
+take a minute or two:: 
 
   ./make-compile.sh
+
+Then run any object with a ``main`` method. Start with the usage example
+``UseTheLibraries``, which explains all of the libraries' (few) features::
+
   scala -classpath bin/ UseTheLibraries
 
 With IDE
 --------
 
-The `Sala IDE for Eclipse` at least, finds the source files and compiles them 
+The `Sala IDE for Eclipse` at least, finds the source files and compiles them
 automatically. You can run any file that contains an object with a ``main`` 
 method by clicking the *Run* button.
 
