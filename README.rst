@@ -15,11 +15,11 @@ The project should especially demonstrate the usefulness of pattern matching.
 Therefore this library is implemented three times with different programming 
 paradigms:
 
----------------------  -------------------------------------  
+=====================  =====================================  
 Package: ``symathm``   Functional, with pattern matching.     
 Package: ``symathoo``  Classical object oriented.             
 Package: ``symathv``   Object oriented with Visitor pattern.  
----------------------  -------------------------------------  
+=====================  =====================================  
 
 
 Package Contents
