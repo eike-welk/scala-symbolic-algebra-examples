@@ -2,46 +2,70 @@
                   Simple Symbolic Mathematics for Scala
 ===============================================================================
 
-This project contains a very simple, and incomplete symbolic math library in 
+This project contains a very simple, and incomplete, symbolic math library in 
 Scala. It can *differentiate* and *evaluate* simple mathematical expressions. 
 The library also contains some aspects of an internal DSL: The expressions can 
 be entered like regular math with Int or Double objects, and there is a ML 
-style *"let" expression*.
+style *"let" expression*. Here is a short example that demonstrates the 
+differentiation feature::
+
+    import symathm.Expression._
+    import symathm.ExprOps._
+    import Expr.{int2Num, double2Num}
+    
+    //Create some symbols (unknown variables)
+    val (a, b, c, x) = (Sym("a"), Sym("b"), Sym("c"), Sym("x"))
+
+    //Create an expression. `~^` denotes exponentiation (power).
+    val expr1 = 2 * x~^4 + 5 * x~^2 + x~^0.5 
+    //Differentiate the expression with respect to `x`
+    val dexpr1 = diff(expr1, x) 
+
+    //Print the expression in human readable form.
+    //Prints: "8.0 * x ~^ 3.0 + 10.0 * x + 0.5 * x ~^ -0.5;;"
+    pprintln(dexpr1)
 
 The library is not intended to be seriously used. Instead it should demonstrate 
 features of Scala that are interesting for programmers that come form 
 traditional object oriented languages; such as: C++, Java, Python, Ruby.
 The project should especially demonstrate the usefulness of pattern matching.
 Therefore this library is implemented three times with different programming 
-paradigms:
+paradigms, but with identical features and interfaces:
 
 =====================  =====================================  
 Package ``symathm`` :  Functional, with pattern matching.     
-Package ``symathoo``:  Classical object oriented.             
 Package ``symathv`` :  Object oriented with Visitor pattern.  
+Package ``symathoo``:  Classical object oriented.             
 =====================  =====================================  
 
 
-Package Contents
-================
+Repository Contents
+===================
 
-``src/symathm/SymbolicMainM``
-    Symbolic math library, implemented in functional fashion, with pattern 
-    matching. 
-    (Package: ``symathm``)
-``src/symathv/SymbolicMainV``
-    Implementation of the library with the visitor pattern. - Object oriented,
-    but structure similar to pattern matching. 
-    (Package: ``symathv``) 
-``src/symathoo/SymbolicMainOO``
-    The symbolic math library implemented in simple object oriented fashion.
-    (Package: ``symathoo``)
+``src/``
+    ``symathm/SymbolicMainM.scala``
+        Symbolic math library, implemented in functional fashion, with pattern 
+        matching. 
+        (Package: ``symathm``)
+    ``symathv/SymbolicMainV.scala``
+        Implementation of the library with the visitor pattern. Object 
+        oriented, but structure similar to pattern matching. 
+        (Package: ``symathv``) 
+    ``symathoo/SymbolicMainOO.scala``
+        The symbolic math library implemented in simple object oriented fashion.
+        (Package: ``symathoo``)
 
-``src/pattern/`` 
-    ``testdsl.scala``
-        Short example implementation of the libraries' "DSL" features.
-    ``testvisitor.scala``
-        Short example implementation of the visitor pattern. 
+    ``UseTheLibraries.scala``
+        Program that demonstrates the features of the libraries.
+    
+        The three implementations of the library have identical features and 
+        interfaces.
+
+    ``pattern/`` 
+        ``testdsl.scala``
+            Short example implementation of the libraries' "DSL" features.
+        ``testvisitor.scala``
+            Short example implementation of the visitor pattern. 
 
 ``make-compile.sh``
     Compile all Scala source files.
