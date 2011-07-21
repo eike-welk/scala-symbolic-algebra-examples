@@ -23,8 +23,16 @@
 /**
  * Simple Symbolic Algebra in Scala
  * 
- * This implementation uses the '''Visitor pattern''',  classes contain 
- * '''mostly data''' with some trivial functions that call into the visitor.
+ * This implementation uses the '''Visitor pattern'''. 
+ * A mathematical expression consists of a recursive tree of Nodes. Nodes 
+ * contain '''mostly data''' and only trivial methods. 
+ * 
+ * The visitor is an object that embodies a certain algorithm, for example
+ * to compute the derivative. It has specific methods for each node type.  
+ * The nodes' trivial methods call associated methods of the visitor, 
+ * that perform the algorithm. 
+ * 
+ * The methods of the visitor parallel the cases of a `match` expression.
  */
 package symathv
 
@@ -69,11 +77,6 @@ object Expression {
     def acceptStr(v: StrVisitor): String
     /** Call into visitor that computes an expression. */
     def acceptExpr(v: ExprVisitor): Expr
-  }
-  object Expr {
-    //implicit conversions so that numbers can be used with the binary operators
-    implicit def int2Num(inum: Int) = Num(inum)
-    implicit def double2Num(dnum: Double) = Num(dnum)
   }
   
   
@@ -131,7 +134,11 @@ object Expression {
   
   
   //--- Nicer syntax (the "DSL") ---------------------------------------------
-  /** 
+  //Implicit conversions so that numbers can be used with the binary operators
+  implicit def int2Num(inum: Int) = Num(inum)
+  implicit def double2Num(dnum: Double) = Num(dnum)
+
+    /** 
    * Convenience object to create an environment from several assignments.
    * 
    * Usage:
@@ -740,7 +747,6 @@ object ExprOps {
 object SymbolicMainV {
   import Expression._
   import ExprOps._
-  import Expr.{int2Num, double2Num}
 
   //Create some symbols for the tests (unknown variables)
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))

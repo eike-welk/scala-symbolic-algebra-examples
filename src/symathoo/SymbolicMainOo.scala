@@ -23,8 +23,9 @@
 /**
  * Simple Symbolic Algebra in Scala
  * 
- * This implementation uses '''object oriented''' style,  classes contain 
- * '''data and methods''' that operate on the data.
+ * This implementation uses '''object oriented''' style.
+ * A mathematical expression consists of a recursive tree of Nodes.
+ * Nodes contain '''data and methods''' that operate on the data.
   */
 package symathoo
 
@@ -35,6 +36,11 @@ import scala.collection.mutable.ListBuffer
  * Define the expression's nodes, and the DSL.
  */
 object Expression {
+  //--- DSL aspect ------------------------------------------------------
+  //Implicit conversions so that numbers can be used with the binary operators
+  implicit def int2Num(inum: Int) = Num(inum)
+  implicit def double2Num(dnum: Double) = Num(dnum)
+
   //The elements of the AST ----------------------------------------------
   /**
    * Common base class of all expression (AST) nodes.
@@ -146,10 +152,6 @@ object Expression {
    * [[symathoo.Expression.Num]], and helper methods.
    */
   object Expr {
-    //implicit conversions so that numbers can be used with the binary operators
-    implicit def int2Num(inum: Int) = Num(inum)
-    implicit def double2Num(dnum: Double) = Num(dnum)
-  
     /**
      * Compute the precedence of each node, for putting parentheses around 
      * the string representation if necessary.
@@ -365,8 +367,6 @@ object Expression {
   
   /** Power (exponentiation) operator */
   case class Pow(base: Expr, exponent: Expr) extends Expr {
-    import Expr.{int2Num, double2Num}
-    
     /** Convert instance to a pretty printed string. */
     override def prettyStr(outerNode: Expr = Let("", 0, 0)) = {
       val sRep = base.prettyStr(this) + " ~^ " + exponent.prettyStr(this)
@@ -610,7 +610,6 @@ object ExprOps {
 object SymbolicMainOo {
   import Expression._
   import ExprOps._
-  import Expr.{int2Num, double2Num}
 
   //Create some symbols for the tests (unknown variables)
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))

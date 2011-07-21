@@ -23,16 +23,16 @@
 /**
  * Simple Symbolic Algebra in Scala
  * 
- * This implementation uses '''pattern matching''',  classes contain 
- * '''only data'''. The algorithms that operate on the data are entirely separate 
- * and reside on object `AstOps`.
- *
- * A much more involved project for a miniature programming language in
- * Scala is Kiama:
- * http://code.google.com/p/kiama/wiki/Lambda2
- *
- * See also this discussion:
- * http://www.scala-lang.org/node/6860
+ * This implementation uses '''pattern matching''', and techniques from 
+ * functional programming.
+ * 
+ * A mathematical expression consists of a recursive tree of Nodes.
+ * Nodes contain '''only data''' and have '''no methods'''. The algorithms that 
+ * operate on the data (for example the differentiation algorithm) are entirely 
+ * separate, and implemented in object `ExprOps`. 
+ * 
+ * The algorithms use pattern matching to react specifically for different 
+ * kinds of nodes.
  */
 package symathm
 
@@ -71,13 +71,7 @@ object Expression {
     def ~^(other: Expr) = Pow(this, other)
     def :=(other: Expr) = Asg(this, other)
   }
-  object Expr {
-    //implicit conversions so that numbers can be used with the binary operators
-    implicit def int2Num(inum: Int) = Num(inum)
-    implicit def double2Num(dnum: Double) = Num(dnum)
-  }
-  
-  
+
   //The concrete node types
   /** Numbers */
   case class Num(num: Double) extends Expr
@@ -101,13 +95,17 @@ object Expression {
   /** Assignment: `x := a + b`. Used by `let` and `Env` convenience objects. */ 
   case class Asg(lhs: Expr, rhs: Expr) extends Expr
   
-  
+    
   /** Type of the environment, contains variables that are assigned by let. */
   type Environment = Map[String, Expr]
   val Environment = Map[String, Expr] _
   
   
   //--- Nicer syntax (the "DSL") ---------------------------------------------
+  //Implicit conversions so that numbers can be used with the binary operators
+  implicit def int2Num(inum: Int) = Num(inum)
+  implicit def double2Num(dnum: Double) = Num(dnum)
+
   /** 
    * Convenience object to create an environment from several assignments.
    * 
@@ -208,7 +206,6 @@ object Expression {
  * */
 object ExprOps {
   import Expression._
-  import Expr.{int2Num, double2Num}
   
   /** 
    * Convert the AST to a string in normal infix notation for math.
@@ -490,7 +487,6 @@ object ExprOps {
 object SymbolicMainM {
   import Expression._
   import ExprOps._
-  import Expr.{int2Num, double2Num} //enables `2 * x` instead of `Num(2) * x`
 
   //Create some symbols for the tests (unknown variables)
   val (a, b, x) = (Sym("a"), Sym("b"), Sym("x"))

@@ -5,27 +5,27 @@
 This project contains a very simple, and incomplete, symbolic math library in 
 Scala. It can *differentiate* and *evaluate* simple mathematical expressions. 
 The library also contains some aspects of an internal DSL: The expressions can 
-be entered like regular math with Int or Double objects, and there is a ML 
-style *"let" expression*. Here is a short example that demonstrates the 
+be entered like regular math with ``Int`` or ``Double`` objects, and there is 
+a ML style *"let" expression*. Here is a short example that demonstrates the 
 differentiation feature::
 
     import symathm.Expression._
     import symathm.ExprOps._
-    import Expr.{int2Num, double2Num}
     
     //Create some symbols (unknown variables)
-    val (a, b, c, x) = (Sym("a"), Sym("b"), Sym("c"), Sym("x"))
+    val (a, x) = (Sym("a"), Sym("x"))
 
     //Create an expression. `~^` denotes exponentiation (power).
-    val expr1 = 2 * x~^4 + 5 * x~^2 + x~^0.5 
+    val expr1 = a * x~^4 + 5 * x~^2 + x~^0.5 
+
     //Differentiate the expression with respect to `x`
     val dexpr1 = diff(expr1, x) 
 
     //Print the expression in human readable form.
-    //Prints: "8.0 * x ~^ 3.0 + 10.0 * x + 0.5 * x ~^ -0.5;;"
+    //Prints: "4.0 * a * x ~^ 3.0 + 10.0 * x + 0.5 * x ~^ -0.5;;"
     pprintln(dexpr1)
 
-The library is not intended to be seriously used. Instead it should demonstrate 
+The library is not intended to be used seriously. Instead it should demonstrate 
 features of Scala that are interesting for programmers that come form 
 traditional object oriented languages; such as: C++, Java, Python, Ruby.
 The project should especially demonstrate the usefulness of pattern matching.
@@ -102,6 +102,12 @@ Then run any object with a ``main`` method. Start with the usage example
 
   scala -classpath bin/ UseTheLibraries
 
+To start Scala's read-eval-print loop, you need to specify the ``classpath`` 
+where the compiled files are found (but don't specify an object that should 
+be run)::
+
+  scala -classpath bin/ 
+
 With IDE
 --------
 
@@ -147,10 +153,18 @@ add features to each version of the library.
 
 * Add derivation of the ``Log`` node.
 * Add new nodes, for example ``sin``, ``cos`` and ``tan``.
-* Add new simplification algorithms. Especially add a separate ``simplify`` 
-  function.
 * Add function call node. Maybe this makes an inert ``diff`` node superfluous.
   (See point below.)
 * Add ``lambda`` (function body) node.
 * Implement an inert ``diff`` node. The "a$x" notation is a hack.
-* Implement some of the TODOs
+
+* Implement an algorithm to distribute factors over sums, and distribute 
+  powers over products. For example: ``(a + b) * c`` --> ``a*c + b*c``. 
+  
+  This is interesting for ``eval``: more operators with only numeric arguments 
+  can be found, and evaluated. 
+
+* Implement an algorithm to collect factors and powers. (The opposite of the 
+  algorithm above.) It makes formulas look good.
+* Maybe add a separate ``simplify`` function.
+* Implement some of the TODOs in the code.

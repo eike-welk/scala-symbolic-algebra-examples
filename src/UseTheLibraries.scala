@@ -26,7 +26,7 @@ object UseTheLibraries {
     
     import symathm.Expression._
     import symathm.ExprOps._
-    import Expr.{int2Num, double2Num}
+//    import Expr.{int2Num, double2Num}
     
     //Create some symbols (unknown variables)
     val (a, b, c, x) = (Sym("a"), Sym("b"), Sym("c"), Sym("x"))
@@ -84,7 +84,6 @@ object UseTheLibraries {
     
     import symathv.Expression._
     import symathv.ExprOps._
-    import Expr.{int2Num, double2Num}
     
     //Create some symbols (unknown variables)
     val (a, b, c, x) = (Sym("a"), Sym("b"), Sym("c"), Sym("x"))
@@ -142,7 +141,6 @@ object UseTheLibraries {
     
     import symathoo.Expression._
     import symathoo.ExprOps._
-    import Expr.{int2Num, double2Num}
     
     //Create some symbols (unknown variables)
     val (a, b, c, x) = (Sym("a"), Sym("b"), Sym("c"), Sym("x"))
