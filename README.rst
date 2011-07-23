@@ -5,20 +5,20 @@
 This project contains a very simple, and incomplete, symbolic math library in 
 Scala. It can *differentiate* and *evaluate* simple mathematical expressions. 
 The library also contains some aspects of an internal DSL: The expressions can 
-be entered like regular math with ``Int`` or ``Double`` objects, and there is 
+be entered like regular math with ``Int`` or ``Double`` numbers, and there is 
 a ML style *"let" expression*. Here is a short example that demonstrates the 
 differentiation feature::
 
     import symathm.Expression._
     import symathm.ExprOps._
     
-    //Create some symbols (unknown variables)
+    //Create some symbols (unknown variables).
     val (a, x) = (Sym("a"), Sym("x"))
 
     //Create an expression. `~^` denotes exponentiation (power).
     val expr1 = a * x~^4 + 5 * x~^2 + x~^0.5 
 
-    //Differentiate the expression with respect to `x`
+    //Differentiate the expression with respect to `x`.
     val dexpr1 = diff(expr1, x) 
 
     //Print the expression in human readable form.
@@ -26,7 +26,7 @@ differentiation feature::
     pprintln(dexpr1)
 
 The library is not intended to be used seriously. Instead it should demonstrate 
-features of Scala that are interesting for programmers that come form 
+simple features of Scala that are interesting for programmers that come form 
 traditional object oriented languages; such as: C++, Java, Python, Ruby.
 The project should especially demonstrate the usefulness of pattern matching.
 Therefore this library is implemented three times with different programming 
@@ -37,6 +37,13 @@ Package ``symathm`` :  Functional, with pattern matching.
 Package ``symathv`` :  Object oriented with Visitor pattern.  
 Package ``symathoo``:  Classical object oriented.             
 =====================  =====================================  
+
+The three libraries are big enough (500 to 700 lines) to give an impression 
+how working with a real program would be. But they are small and simple 
+enough, to be easily understood. To write the algorithms, and to judge their 
+correctness, only high school math is necessary. In principle the algorithms 
+can be looked up in Wikipedia 
+(http://en.wikipedia.org/wiki/Table_of_derivatives).
 
 
 Repository Contents
@@ -153,18 +160,86 @@ add features to each version of the library.
 
 * Add derivation of the ``Log`` node.
 * Add new nodes, for example ``sin``, ``cos`` and ``tan``.
+
 * Add function call node. Maybe this makes an inert ``diff`` node superfluous.
   (See point below.)
+
 * Add ``lambda`` (function body) node.
 * Implement an inert ``diff`` node. The "a$x" notation is a hack.
 
+* Implement a node for a ``for`` loop. Write evaluation and differentiation
+  algorithms for it. (I believe differentiating a ``for`` loop is possible, 
+  because older versions of *Maple* could do it.)
+
 * Implement an algorithm to distribute factors over sums, and distribute 
   powers over products. For example: ``(a + b) * c`` --> ``a*c + b*c``. 
-  
   This is interesting for ``eval``: more operators with only numeric arguments 
   can be found, and evaluated. 
 
 * Implement an algorithm to collect factors and powers. (The opposite of the 
   algorithm above.) It makes formulas look good.
+
 * Maybe add a separate ``simplify`` function.
 * Implement some of the TODOs in the code.
+
+
+Architecture
+============
+
+Data Format
+-----------
+
+Mathematical formulas are internally represented as nested trees of nodes. 
+They are implemented as *case classes*, syntactical sugar for simple classes
+that are intended to work with the ``match`` statement.
+(http://www.artima.com/pins1ed/case-classes-and-pattern-matching.html)
+
+* ``Num(num: Double)``               : A number (floating point)
+* ``Sym(name: String)``              : A variable (symbol)
+* ``Add(summands: List[Expr])``      : Addition (n-ary)
+* ``Mul(factors: List[Expr])``       : Multiplication (n-ary)
+* ``Pow(base: Expr, exponent: Expr)``: Exponentiation
+* ``Log(base: Expr, power: Expr)``   : Logarithm
+* ``Let(name: String, value: Expr, exprNext: Expr)``: Bind a value to a 
+  variable, and put a single expression into the environment, where the new 
+  variables are visible.
+
+There are no nodes for subtraction and division. Subtraction is represented 
+as multiplication with ``-1`` (``-a = -1 * a``), division is expressed as a 
+power of ``-1`` (``1/a = a~^(-1)``). Addition and multiplication are also 
+*n-ary*, they take an arbitrary number of arguments. 
+
+This idea was taken from the computer algebra program *Maxima*, it is intended 
+to reduce the complexity of the algorithms.
+
+``1 + a`` is expressed as::
+
+   Add(List(Num(1.0), Sym("a")))
+
+``1 + a * 2`` is expressed as::
+    
+    Add(List(Num(1.0), Mul(List(Sym("a"), Num(2.0)))))
+
+Addition and multiplication are n-ary, they can have an arbitrary number of 
+arguments. ``1 + a + 2 + 3`` and ``1 * a * 2 * 3`` are respectively 
+expressed as::
+
+    Add(List(Num(1.0), Sym("a"), Num(2.0), Num(3.0)))
+    Mul(List(Num(1.0), Sym("a"), Num(2.0), Num(3.0)))
+    
+As there are no subtraction or division operators, ``a-x`` and ``a/x`` are 
+respectively expressed as::
+
+    Add(List(Sym("a"), Mul(List(Num(-1.0), Sym("x")))))
+    Mul(List(Sym("a"), Pow(Sym("x"), Num(-1.0))))
+
+The ``let`` expression is created by a little abuse of Scala's liberal syntax 
+(the DSL). ``let (a:=2) in a * a`` results in::
+
+    Let("a", Num(2.0), Mul(List(Sym("a"), Sym("a"))))
+
+Algorithms
+----------
+
+Algorithms traverse a tree of nodes in a recursive way, and create a 
+new tree as the result.

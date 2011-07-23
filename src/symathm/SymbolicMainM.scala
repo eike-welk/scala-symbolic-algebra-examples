@@ -459,9 +459,10 @@ object ExprOps {
         expo * simplifyPow(base ~^ (expo-1))
       //General case (from Maple):
       //      diff(u(x)~^v(x), x) =
-      //        u(x)~^v(x) * (diff(v(x),x)*ln(u(x))+v(x)*diff(u(x),x)/u(x))
+      //        u(x)~^v(x) * (diff(v(x),x)*ln(u(x)) + diff(u(x),x)*v(x)/u(x))
       case Pow(u, v) =>
-        eval((u~^v) * (diff(v, x, env)*Log(E, u) + v*diff(u, x)/u), Environment()) //eval to simplify
+        eval((u~^v) * (diff(v, x, env)*Log(E, u) + diff(u, x, env)*v/u), 
+             Environment()) //eval for simplification
       //TODO: Differentiate logarithms
       //Differentiate `let name = value in nextExpr`. 
       case Let(name, value, nextExpr) => {
