@@ -40,7 +40,7 @@ Package ``symathoo``:  Classical object oriented.
 
 The three libraries are big enough (500 to 700 lines) to give an impression 
 how working with a real program would be. But they are small and simple 
-enough, to be easily understood. To write the algorithms, and to judge their 
+enough, to be easily understood. To write the algorithms, and to verify their 
 correctness, only high school math is necessary. In principle the algorithms 
 can be looked up in Wikipedia 
 (http://en.wikipedia.org/wiki/Table_of_derivatives).
@@ -186,39 +186,50 @@ add features to each version of the library.
 Architecture
 ============
 
-Data Format
------------
+Data Structures
+---------------
 
-Mathematical formulas are internally represented as nested trees of nodes. 
+All important data structures are defined in object ``Expression``.
+
+Mathematical formulas are internally represented as nested trees of *nodes*. 
 They are implemented as *case classes*, syntactical sugar for simple classes
 that are intended to work with the ``match`` statement.
 (http://www.artima.com/pins1ed/case-classes-and-pattern-matching.html)
 
+* ``Expr``                           : The common base class of all nodes
 * ``Num(num: Double)``               : A number (floating point)
 * ``Sym(name: String)``              : A variable (symbol)
 * ``Add(summands: List[Expr])``      : Addition (n-ary)
 * ``Mul(factors: List[Expr])``       : Multiplication (n-ary)
-* ``Pow(base: Expr, exponent: Expr)``: Exponentiation
+* ``Pow(base: Expr, exponent: Expr)``: Exponentiation (operator ``~^``)
 * ``Log(base: Expr, power: Expr)``   : Logarithm
 * ``Let(name: String, value: Expr, exprNext: Expr)``: Bind a value to a 
   variable, and put a single expression into the environment, where the new 
   variables are visible.
+* ``Asg(lhs: Expr, rhs: Expr)``      : ``:=`` operator, helper object to 
+  create ``Let`` nodes.
 
-There are no nodes for subtraction and division. Subtraction is represented 
-as multiplication with ``-1`` (``-a = -1 * a``), division is expressed as a 
-power of ``-1`` (``1/a = a~^(-1)``). Addition and multiplication are also 
-*n-ary*, they take an arbitrary number of arguments. 
+``1+a`` and ``1+a*2`` are respectively expressed as::
 
-This idea was taken from the computer algebra program *Maxima*, it is intended 
-to reduce the complexity of the algorithms.
-
-``1 + a`` is expressed as::
-
-   Add(List(Num(1.0), Sym("a")))
-
-``1 + a * 2`` is expressed as::
-    
+    Add(List(Num(1.0), Sym("a")))
     Add(List(Num(1.0), Mul(List(Sym("a"), Num(2.0)))))
+
+N-Ary Addition and Multiplication
+.................................
+
+There are no nodes for subtraction or division. Subtraction is represented 
+as multiplication with ``-1``: (``-a = -1 * a``). Division is expressed as a 
+power of ``-1``: (``1/a = a~^(-1)``). Addition and multiplication are also 
+*n-ary*, they take an arbitrary number of arguments [#]_. 
+
+.. [#] This idea was taken from the computer algebra program *Maxima*, it is intended 
+       to reduce the complexity of the algorithms.
+
+As there are no subtraction or division operators, ``a-x`` and ``a/x`` are 
+respectively expressed as::
+
+    Add(List(Sym("a"), Mul(List(Num(-1.0), Sym("x")))))
+    Mul(List(Sym("a"), Pow(Sym("x"), Num(-1.0))))
 
 Addition and multiplication are n-ary, they can have an arbitrary number of 
 arguments. ``1 + a + 2 + 3`` and ``1 * a * 2 * 3`` are respectively 
@@ -227,19 +238,92 @@ expressed as::
     Add(List(Num(1.0), Sym("a"), Num(2.0), Num(3.0)))
     Mul(List(Num(1.0), Sym("a"), Num(2.0), Num(3.0)))
     
-As there are no subtraction or division operators, ``a-x`` and ``a/x`` are 
-respectively expressed as::
+Let Expressions
+................
 
-    Add(List(Sym("a"), Mul(List(Num(-1.0), Sym("x")))))
-    Mul(List(Sym("a"), Pow(Sym("x"), Num(-1.0))))
+``Let`` nodes are similar to assignment statements in imperative programming 
+languages. They are commands to create a new *environment*, where 
+a variable is bound to a value. The dependent expression (the third argument of 
+``Let``) is evaluated in this new environment. The value of a ``Let`` node is
+the value of its dependent expression.
 
-The ``let`` expression is created by a little abuse of Scala's liberal syntax 
-(the DSL). ``let (a:=2) in a * a`` results in::
+``Let`` nodes are created by a little abuse of Scala's liberal syntax 
+(the DSL): ``let (a:=2) in a*a`` results in::
 
     Let("a", Num(2.0), Mul(List(Sym("a"), Sym("a"))))
+
+The ``Let`` node does not create the new environment by itself, it is 
+interpreted by an algorithm. The ``eval`` algorithm interprets ``Let`` 
+nodes as described above: It creates a new environment that contains the new
+variables and also the variables of the old environment. Then ``eval``
+evaluates the dependent expression in the new environment. The expression 
+above would be evaluated to ``Num(4)``.
+
+The *environment* that stores the bindings between variables and their values,
+is (currently) implemented as a ``Map[String, Expr]``.
+
+For convenience there are *type* (and *companion object*) ``Environment``, 
+and a call-able object ``Env`` to create environments.   
+
+DSL
+---
+
+The library contains a modest attempt to implement a domain specific language
+(DSL). The implementation of the DSL is in object ``Expression``.
+Additionally there is small example program to illustrate the same technique: 
+``src/pattern/testdsl.scala``.
+
+The common base class of all nodes, ``Expr``, contains the usual mathematical 
+operators: ``+ - * / ~^``, and additionally ``:=``. (``~^`` is the 
+exponentiation operator.) Each operator returns a part of the tree. The ``+`` 
+operator, for example, returns an ``Add`` node.
+
+There are implicit conversion functions (``int2Num``, ``double2Num``) in 
+``Expression``, that convert ``Int`` and ``Double`` objects into ``Num`` 
+nodes. This way numbers and nodes can be freely mixed.
+
+``Let`` nodes can be somewhat elegantly created with the call-able helper 
+object ``let``. When called with multiple assignments, ``let`` creates nested
+``Let`` nodes. The syntax is::
+
+    let (a := 2, x := 3) in a + x
+
+Which returns::
+    
+    Let("a", Num(2.0), Let("x", Num(3.0), Add(List(Sym("a"), Sym("x")))))
+
+The ``eval`` algorithm would evaluate this expression to ``Num(5)``.
 
 Algorithms
 ----------
 
-Algorithms traverse a tree of nodes in a recursive way, and create a 
-new tree as the result.
+The high-level algorithms are implemented in object ``ExprOps`` (in all 
+implementations of the library). All algorithms traverse a tree of nodes in 
+a recursive way, and create a new tree as the result.
+
+There are currently two algorithms:
+
+``eval``
+    This algorithm behaves like an interpreter of a programming language.
+
+    Differently to a traditional programming language there are no "unknown 
+    variable" errors. The algorithm replaces known variables (symbols) by their 
+    values, but unknown variables are left unchanged.
+
+    ``eval`` performs the usual arithmetic operations on numbers. Expressions
+    that contain numbers and unknown variables are simplified as much as 
+    possible. The n-ary multiplication and addition nodes simplify this
+    task: ``1 + a + 2`` can easily be simplified to ``3 + a``, by partitioning
+    the summands into numbers and other nodes.
+
+``diff``
+    Differentiate expressions.
+
+    The algorithm can differentiate ``Let`` nodes; differentiating::
+     
+        let (a:=f) in g
+
+    with respect to ``x``, basically yields::
+
+        let (a:=f, a$x:=diff(f, x)) in diff(g, x)
+

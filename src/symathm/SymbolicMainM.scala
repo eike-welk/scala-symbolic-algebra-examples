@@ -274,7 +274,7 @@ object ExprOps {
     
     //Put parentheses around the term if necessary
     val (precTerm, precOuter) = (precedence(node), precedence(outerNode))
-    if (precTerm == -1 || precOuter == -1)  nodeStr
+    if (precTerm == -1 || precOuter == -1)  nodeStr //-1: parens are unnecessary
     else if (precTerm < precOuter)          "(" + nodeStr + ")"
     else                                    nodeStr
   }
