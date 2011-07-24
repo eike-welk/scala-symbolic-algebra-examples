@@ -220,10 +220,7 @@ N-Ary Addition and Multiplication
 There are no nodes for subtraction or division. Subtraction is represented 
 as multiplication with ``-1``: (``-a = -1 * a``). Division is expressed as a 
 power of ``-1``: (``1/a = a~^(-1)``). Addition and multiplication are also 
-*n-ary*, they take an arbitrary number of arguments [#]_. 
-
-.. [#] This idea was taken from the computer algebra program *Maxima*, it is intended 
-       to reduce the complexity of the algorithms.
+*n-ary*, they take an arbitrary number of arguments [#maxima]_. 
 
 As there are no subtraction or division operators, ``a-x`` and ``a/x`` are 
 respectively expressed as::
@@ -326,4 +323,8 @@ There are currently two algorithms:
     with respect to ``x``, basically yields::
 
         let (a:=f, a$x:=diff(f, x)) in diff(g, x)
+
+
+.. [#maxima] This idea was taken from the computer algebra program *Maxima*, it is intended 
+       to simplify the algorithms.
 
