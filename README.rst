@@ -217,17 +217,6 @@ that are intended to work with the ``match`` statement.
 N-Ary Addition and Multiplication
 .................................
 
-There are no nodes for subtraction or division. Subtraction is represented 
-as multiplication with ``-1``: (``-a = -1 * a``). Division is expressed as a 
-power of ``-1``: (``1/a = a~^(-1)``). Addition and multiplication are also 
-*n-ary*, they take an arbitrary number of arguments [#maxima]_. 
-
-As there are no subtraction or division operators, ``a-x`` and ``a/x`` are 
-respectively expressed as::
-
-    Add(List(Sym("a"), Mul(List(Num(-1.0), Sym("x")))))
-    Mul(List(Sym("a"), Pow(Sym("x"), Num(-1.0))))
-
 Addition and multiplication are n-ary, they can have an arbitrary number of 
 arguments. ``1 + a + 2 + 3`` and ``1 * a * 2 * 3`` are respectively 
 expressed as::
@@ -235,6 +224,16 @@ expressed as::
     Add(List(Num(1.0), Sym("a"), Num(2.0), Num(3.0)))
     Mul(List(Num(1.0), Sym("a"), Num(2.0), Num(3.0)))
     
+There are no nodes for subtraction or division. Subtraction is represented 
+as multiplication with ``-1``: (``-a = -1 * a``). Division is expressed as a 
+power of ``-1``: (``1/a = a~^(-1)``). [#maxima]_. 
+
+As there are no subtraction or division operators, ``a-x`` and ``a/x`` are 
+respectively expressed as::
+
+    Add(List(Sym("a"), Mul(List(Num(-1.0), Sym("x")))))
+    Mul(List(Sym("a"), Pow(Sym("x"), Num(-1.0))))
+
 Let Expressions
 ................
 
@@ -325,6 +324,8 @@ There are currently two algorithms:
         let (a:=f, a$x:=diff(f, x)) in diff(g, x)
 
 
-.. [#maxima] This idea was taken from the computer algebra program *Maxima*, it is intended 
-       to simplify the algorithms.
+.. [#maxima] The ideas for n-ary operators (additon, multiplication), and 
+   for the ommission of subtraction and division nodes, were taken from the 
+   computer algebra program *Maxima*. It is intended to simplify the 
+   algorithms.
 
