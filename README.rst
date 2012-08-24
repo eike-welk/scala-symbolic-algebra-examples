@@ -78,6 +78,11 @@ Repository Contents
     Compile all Scala source files.
 ``make-scaladoc.sh``
     Create API documentation with ``scaladoc``.
+``make-tests.sh``
+    Run all tests. Compiles all sources prior to testing.
+``.project``
+    Project file for the `Eclipse` IDE and its Scala plugin. Lets Eclipse find 
+    the Scala files. 
 ``README.rst``
     This file.    
 
@@ -115,14 +120,17 @@ be run)::
 
   scala -classpath bin/ 
 
-With IDE
---------
+With Eclipse IDE
+----------------
 
-The `Sala IDE for Eclipse` at least, finds the source files and compiles them
-automatically. You can run any file that contains an object with a ``main`` 
-method by clicking the *Run* button.
+The root directory contains a project file (``.project``) for the 
+`Sala IDE for Eclipse`. It lets Eclipse find the source files, so that it 
+can compile them automatically. You can run any file that contains an object
+with a ``main`` method by clicking the *Run* button.
 
 First try out the usage example ``UseTheLibraries.scala``.
+
+`Sala IDE for Eclipse` can be downloaded from: http://scala-ide.org/
 
 
 Required Knowledge of Scala
@@ -266,7 +274,7 @@ DSL
 
 The library contains a modest attempt to implement a domain specific language
 (DSL). The implementation of the DSL is in object ``Expression``.
-Additionally there is small example program to illustrate the same technique: 
+Additionally there is a small example program to illustrate the same technique: 
 ``src/pattern/testdsl.scala``.
 
 The common base class of all nodes, ``Expr``, contains the usual mathematical 

@@ -91,12 +91,12 @@ object Expression {
     override def acceptStr(v: StrVisitor) = v.visitSym(this)
     override def acceptExpr(v: ExprVisitor) = v.visitSym(this)
   }
-  /** N-ary addition (+ a b c d). Subtraction is emulated with the unary minus operator */
+  /** N-ary addition (+ a b c d). Subtraction is emulated by multiplication with -1. */
   case class Add(summands: List[Expr]) extends Expr {
     override def acceptStr(v: StrVisitor) = v.visitAdd(this)
     override def acceptExpr(v: ExprVisitor) = v.visitAdd(this)
   }
-  /** N-ary multiplication (* a b c d); division is emulated with power */
+  /** N-ary multiplication (* a b c d); division is emulated with power. */
   case class Mul(factors: List[Expr]) extends Expr {
     override def acceptStr(v: StrVisitor) = v.visitMul(this)
     override def acceptExpr(v: ExprVisitor) = v.visitMul(this)
@@ -925,6 +925,16 @@ object SymbolicMainV {
     //same as above with `let` DSL
     assert(diff(let(a := x~^2) in a + x + 2, x) == 
            (let(a := x~^2, a$x := 2 * x) in 1 + a$x))
+           
+    //Degenerate cases: Mul and Add with no operands.
+    //Add(Nil) is equivalent to Num(0)
+//   pprintln(diff(Add(Nil), x))
+    assert(eval(Add(Nil)) == Num(0))
+    assert(diff(Add(Nil), x) == Num(0))
+    //Mul(Nil) is equivalent to Num(1)
+//   pprintln(diff(Mul(Nil), x))
+    assert(eval(Mul(Nil)) == Num(1))
+    assert(diff(Mul(Nil), x) == Num(0))
   }
 
 
@@ -966,6 +976,10 @@ object SymbolicMainV {
     // must be 5 + 2 * x
 //    pprintln(let(a := 2, b := a * x, a := 5) in a + b)
     assert(eval(let(a := 2, b := a * x, a := 5) in a + b) == 5 + 2 * x)
+    
+    //Degenerate cases: Mul and Add with no operands.
+    assert(eval(Add(Nil)) == Num(0))
+    assert(eval(Mul(Nil)) == Num(1))
   }
 
   /** Run the test application. */
